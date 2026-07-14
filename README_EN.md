@@ -7,7 +7,7 @@
 Aggregate Codeforces, AtCoder, Luogu, Nowcoder, and custom public schedules with local times, countdowns, favorites, and reminders.
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-0.9.0-000000?style=flat-square">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.0-000000?style=flat-square">
   <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-000000?style=flat-square&logo=android&logoColor=white">
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-1.9.24-000000?style=flat-square&logo=kotlin&logoColor=white">
   <img alt="Jetpack Compose" src="https://img.shields.io/badge/UI-Jetpack_Compose-000000?style=flat-square&logo=jetpackcompose&logoColor=white">
@@ -16,7 +16,7 @@ Aggregate Codeforces, AtCoder, Luogu, Nowcoder, and custom public schedules with
 
 [简体中文](README.md) · **English**
 
-[Highlights](#highlights) · [Data sources](#supported-data-sources) · [Getting started](#getting-started) · [Custom sources](#adding-a-custom-source) · [Architecture](#architecture) · [Verification](#project-verification)
+[Interface preview](#interface-preview) · [Highlights](#highlights) · [Data sources](#supported-data-sources) · [Getting started](#getting-started) · [Custom sources](#adding-a-custom-source) · [Architecture](#architecture) · [Verification](#project-verification)
 
 </div>
 
@@ -27,6 +27,28 @@ Aggregate Codeforces, AtCoder, Luogu, Nowcoder, and custom public schedules with
 Contest Pulse is an Android app with no application backend and no account system. It reads upcoming programming contests from public APIs or pages, normalizes their fields and times, stores them locally, and provides favorites, countdowns, calendar integration, and local reminders.
 
 Registration, sign-in, and submissions always happen on the official platform. The app does not store platform credentials, cookies, or tokens, and it never uploads favorites or reminders.
+
+Download the officially signed 1.0 APK from [GitHub Releases](https://github.com/DuckLing-IO/ContestPulse/releases/tag/v1.0).
+
+## Interface preview
+
+<table>
+  <tr>
+    <th width="33%">Contests</th>
+    <th width="33%">Saved</th>
+    <th width="33%">Settings</th>
+  </tr>
+  <tr>
+    <td><img src="img4md/比赛.jpg" alt="Contests: schedules, countdowns, and filters" width="100%"></td>
+    <td><img src="img4md/我的.jpg" alt="Saved: local favorites and status filters" width="100%"></td>
+    <td><img src="img4md/设置.jpg" alt="Settings: data sources and background sync" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">Aggregated schedules, countdowns, and collapsible filters</td>
+    <td align="center">Offline favorites organized by contest status</td>
+    <td align="center">Built-in/custom sources and synchronization preferences</td>
+  </tr>
+</table>
 
 ## Highlights
 
@@ -99,6 +121,14 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`. APKs, signing material, and local SDK configuration are excluded by `.gitignore`.
 
+Official release builds read the untracked `keystore.properties` file from the repository root. Copy [`keystore.properties.example`](keystore.properties.example), fill in a dedicated signing key, and run:
+
+```powershell
+./gradlew.bat assembleRelease
+```
+
+If you only want to install the stable app, use the signed and verified APK from [Releases](https://github.com/DuckLing-IO/ContestPulse/releases); no local signing setup is required.
+
 ## Adding a custom source
 
 Open **Settings → Data sources → Custom sources**:
@@ -156,7 +186,7 @@ Additional technical documentation (currently in Chinese):
 
 ## Project verification
 
-Contest Pulse 0.9.0 has passed the following checks:
+Contest Pulse 1.0 has passed the following checks:
 
 ```powershell
 ./gradlew.bat testDebugUnitTest

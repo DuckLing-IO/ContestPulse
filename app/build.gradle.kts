@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,29 @@ plugins {
     alias(libs.plugins.kotlin.kapt)
     alias(libs.plugins.hilt)
 }
+
+val releaseKeystorePropertiesFile = rootProject.file("keystore.properties")
+val releaseKeystoreProperties = Properties().apply {
+    if (releaseKeystorePropertiesFile.isFile) {
+        releaseKeystorePropertiesFile.inputStream().use(::load)
+    }
+}
+
+val releaseArtifactRequested = gradle.startParameter.taskNames.any { taskName ->
+    taskName.endsWith("assembleRelease", ignoreCase = true) ||
+        taskName.endsWith("bundleRelease", ignoreCase = true)
+}
+
+if (releaseArtifactRequested && !releaseKeystorePropertiesFile.isFile) {
+    error(
+        "Release signing is not configured. Copy keystore.properties.example " +
+            "to keystore.properties and provide a dedicated signing key.",
+    )
+}
+
+fun releaseSigningProperty(name: String): String =
+    releaseKeystoreProperties.getProperty(name)
+        ?: error("Missing '$name' in ${releaseKeystorePropertiesFile.path}")
 
 android {
     namespace = "io.duckling.contestpulse"
@@ -14,8 +39,8 @@ android {
         applicationId = "io.duckling.contestpulse"
         minSdk = 26
         targetSdk = 34
-        versionCode = 9
-        versionName = "0.9.0"
+        versionCode = 10
+        versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -31,8 +56,20 @@ android {
         }
     }
 
+    signingConfigs {
+        if (releaseKeystorePropertiesFile.isFile) {
+            create("release") {
+                storeFile = rootProject.file(releaseSigningProperty("storeFile"))
+                storePassword = releaseSigningProperty("storePassword")
+                keyAlias = releaseSigningProperty("keyAlias")
+                keyPassword = releaseSigningProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

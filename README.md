@@ -7,7 +7,7 @@
 聚合 Codeforces、AtCoder、洛谷、牛客与自定义公开赛程，统一展示本地时间、倒计时、收藏和提醒。
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-0.9.0-000000?style=flat-square">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.0-000000?style=flat-square">
   <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-000000?style=flat-square&logo=android&logoColor=white">
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-1.9.24-000000?style=flat-square&logo=kotlin&logoColor=white">
   <img alt="Jetpack Compose" src="https://img.shields.io/badge/UI-Jetpack_Compose-000000?style=flat-square&logo=jetpackcompose&logoColor=white">
@@ -16,7 +16,7 @@
 
 **简体中文** · [English](README_EN.md)
 
-[功能亮点](#功能亮点) · [支持的数据源](#支持的数据源) · [快速开始](#快速开始) · [自定义来源](#添加自定义来源) · [架构](#架构) · [验证](#项目验证)
+[界面预览](#界面预览) · [功能亮点](#功能亮点) · [支持的数据源](#支持的数据源) · [快速开始](#快速开始) · [自定义来源](#添加自定义来源) · [架构](#架构) · [验证](#项目验证)
 
 </div>
 
@@ -27,6 +27,28 @@
 Contest Pulse 是一款无业务后端、无账号系统的 Android App。它从公开 API 或公开网页同步近期算法比赛，将不同平台的时间和字段规范化后保存在本机，并提供收藏、倒计时、系统日历和本地提醒。
 
 报名、登录与提交始终在竞赛平台官方页面完成。App 不保存平台账号、密码、Cookie 或令牌，也不会把收藏和提醒上传到服务器。
+
+正式签名的 1.0 安装包可从 [GitHub Releases](https://github.com/DuckLing-IO/ContestPulse/releases/tag/v1.0) 下载。
+
+## 界面预览
+
+<table>
+  <tr>
+    <th width="33%">比赛</th>
+    <th width="33%">我的</th>
+    <th width="33%">设置</th>
+  </tr>
+  <tr>
+    <td><img src="img4md/比赛.jpg" alt="比赛模块：赛程、倒计时与筛选" width="100%"></td>
+    <td><img src="img4md/我的.jpg" alt="我的模块：本地收藏与状态筛选" width="100%"></td>
+    <td><img src="img4md/设置.jpg" alt="设置模块：数据来源与后台同步" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">聚合赛程、倒计时与折叠筛选</td>
+    <td align="center">离线保存关注比赛并按状态浏览</td>
+    <td align="center">管理内置/自定义来源与同步策略</td>
+  </tr>
+</table>
 
 ## 功能亮点
 
@@ -99,6 +121,14 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Debug APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。APK、签名文件和本机 SDK 配置均已被 `.gitignore` 排除。
 
+正式 Release 构建会读取仓库根目录下不会提交的 `keystore.properties`。复制 [`keystore.properties.example`](keystore.properties.example)、填写独立签名密钥信息后执行：
+
+```powershell
+./gradlew.bat assembleRelease
+```
+
+如果只需要安装稳定版本，请直接使用 [Releases](https://github.com/DuckLing-IO/ContestPulse/releases) 中已经签名并校验的 APK，无需自行配置签名。
+
 ## 添加自定义来源
 
 打开 **设置 → 数据来源 → 自定义来源**：
@@ -156,7 +186,7 @@ app/src/main/java/io/duckling/contestpulse/
 
 ## 项目验证
 
-当前 0.9.0 已完成以下自动化检查：
+当前 1.0 已完成以下自动化检查：
 
 ```powershell
 ./gradlew.bat testDebugUnitTest

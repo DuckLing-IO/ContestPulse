@@ -4,7 +4,7 @@
 
 Contest Pulse 是无业务后端的本地优先 Android 应用。客户端从公开 API 或公开网页读取比赛信息，个人收藏、提醒和设置只保存在本机。应用不模拟平台登录、不持有 Cookie、不绕过验证码或反爬措施。
 
-当前实现已覆盖可运行 MVP：Codeforces 官方 API、AtCoder/洛谷/牛客公开页面解析、可预览的自定义 HTTPS 数据源、Room 离线仓库、本地收藏/提醒、DataStore 设置与 WorkManager 周期同步。发布前仍需按 `RELEASE_CHECKLIST.md` 完成真机矩阵、目标 SDK 升级评估与正式签名。
+当前实现已覆盖可运行 1.0：Codeforces 官方 API、AtCoder/洛谷/牛客公开页面解析、可预览的自定义 HTTPS 数据源、Room 离线仓库、本地收藏/提醒、DataStore 设置与 WorkManager 周期同步。GitHub APK 使用独立正式密钥签名；应用商店发布前仍需按 `RELEASE_CHECKLIST.md` 完成真机矩阵、目标 SDK 升级评估与 AAB 发布检查。
 
 ## 2. 架构决策
 
