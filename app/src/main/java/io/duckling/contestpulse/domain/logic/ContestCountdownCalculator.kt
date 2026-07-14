@@ -1,0 +1,29 @@
+package io.duckling.contestpulse.domain.logic
+
+import io.duckling.contestpulse.domain.model.Contest
+import io.duckling.contestpulse.domain.model.ContestCountdown
+import io.duckling.contestpulse.domain.model.ContestStatus
+import java.time.Duration
+import java.time.Instant
+
+fun Contest.countdownAt(now: Instant): ContestCountdown = when (statusAt(now)) {
+    ContestStatus.RUNNING -> ContestCountdown.Running
+    ContestStatus.FINISHED -> ContestCountdown.Finished
+    ContestStatus.UNKNOWN -> ContestCountdown.Unknown
+    ContestStatus.UPCOMING -> {
+        val remaining = Duration.between(now, startTime)
+        if (remaining >= Duration.ofDays(1)) {
+            ContestCountdown.Days(remaining.toDays())
+        } else {
+            val totalMinutes = ((remaining.seconds.coerceAtLeast(0) + SECONDS_PER_MINUTE - 1) /
+                SECONDS_PER_MINUTE)
+            ContestCountdown.HoursMinutes(
+                hours = totalMinutes / MINUTES_PER_HOUR,
+                minutes = totalMinutes % MINUTES_PER_HOUR,
+            )
+        }
+    }
+}
+
+private const val SECONDS_PER_MINUTE = 60L
+private const val MINUTES_PER_HOUR = 60L
