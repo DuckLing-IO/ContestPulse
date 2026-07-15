@@ -10,7 +10,9 @@ import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.duckling.contestpulse.domain.model.ContestSource
 import io.duckling.contestpulse.domain.settings.DEFAULT_ENABLED_SOURCES
+import io.duckling.contestpulse.domain.settings.DEFAULT_REMINDER_OFFSET_MINUTES
 import io.duckling.contestpulse.domain.settings.DEFAULT_SYNC_INTERVAL_HOURS
+import io.duckling.contestpulse.domain.settings.SUPPORTED_REMINDER_OFFSET_MINUTES
 import io.duckling.contestpulse.domain.settings.SUPPORTED_SYNC_INTERVALS
 import io.duckling.contestpulse.domain.settings.SettingsRepository
 import io.duckling.contestpulse.domain.settings.SyncPreferences
@@ -43,11 +45,15 @@ class DataStoreSettingsRepository @Inject constructor(
                 }
                 ?.toSet()
                 ?: DEFAULT_ENABLED_SOURCES
+            val defaultReminderOffset = values[DEFAULT_REMINDER_OFFSET]
+                ?.takeIf { it in SUPPORTED_REMINDER_OFFSET_MINUTES }
+                ?: DEFAULT_REMINDER_OFFSET_MINUTES
             SyncPreferences(
                 backgroundSyncEnabled = values[BACKGROUND_ENABLED] ?: true,
                 wifiOnly = values[WIFI_ONLY] ?: false,
                 intervalHours = interval,
                 enabledSources = enabledSources,
+                defaultReminderOffsetMinutes = defaultReminderOffset,
             )
         }
 
@@ -62,6 +68,13 @@ class DataStoreSettingsRepository @Inject constructor(
     override suspend fun setIntervalHours(hours: Int) {
         require(hours in SUPPORTED_SYNC_INTERVALS) { "Unsupported sync interval: $hours" }
         dataStore.edit { values -> values[INTERVAL_HOURS] = hours }
+    }
+
+    override suspend fun setDefaultReminderOffsetMinutes(minutes: Int) {
+        require(minutes in SUPPORTED_REMINDER_OFFSET_MINUTES) {
+            "Unsupported default reminder offset: $minutes"
+        }
+        dataStore.edit { values -> values[DEFAULT_REMINDER_OFFSET] = minutes }
     }
 
     override suspend fun setSourceEnabled(
@@ -80,4 +93,5 @@ class DataStoreSettingsRepository @Inject constructor(
 private val BACKGROUND_ENABLED = booleanPreferencesKey("background_sync_enabled")
 private val WIFI_ONLY = booleanPreferencesKey("wifi_only")
 private val INTERVAL_HOURS = intPreferencesKey("sync_interval_hours")
+private val DEFAULT_REMINDER_OFFSET = intPreferencesKey("default_reminder_offset_minutes")
 private val ENABLED_SOURCES = stringSetPreferencesKey("enabled_sources")

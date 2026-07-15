@@ -17,6 +17,11 @@ interface ReminderManager {
         offset: Duration,
     ): ReminderToggleResult
 
+    suspend fun scheduleDefaultReminder(
+        contestId: String,
+        offset: Duration,
+    )
+
     suspend fun clearForContest(contestId: String)
 
     suspend fun rescheduleForContests(contests: List<Contest>)

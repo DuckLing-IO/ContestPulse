@@ -1,5 +1,6 @@
 package io.duckling.contestpulse.feature.contestlist
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -25,6 +26,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -47,6 +49,10 @@ import io.duckling.contestpulse.domain.model.ContestDateRange
 import io.duckling.contestpulse.domain.model.ContestSource
 import io.duckling.contestpulse.domain.model.SyncErrorType
 import io.duckling.contestpulse.feature.common.ContestCard
+import io.duckling.contestpulse.feature.common.ContestCalendar
+import io.duckling.contestpulse.feature.common.ContestDisplayMode
+import io.duckling.contestpulse.feature.common.CalendarBackAction
+import io.duckling.contestpulse.feature.common.CalendarModeToggle
 import io.duckling.contestpulse.feature.common.EmptyState
 import io.duckling.contestpulse.feature.common.LoadingCards
 import io.duckling.contestpulse.feature.common.NextContestCard
@@ -54,6 +60,11 @@ import io.duckling.contestpulse.feature.common.PageHeader
 import io.duckling.contestpulse.feature.common.SelectableChip
 import io.duckling.contestpulse.feature.common.label
 import io.duckling.contestpulse.feature.common.localDateTimeLabel
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun ContestListRoute(
@@ -73,6 +84,11 @@ fun ContestListRoute(
         onToggleRatedOnly = viewModel::toggleRatedOnly,
         onToggleFavoriteOnly = viewModel::toggleFavoriteOnly,
         onClearFilters = viewModel::clearFilters,
+        onToggleDisplayMode = viewModel::toggleDisplayMode,
+        onSelectCalendarDate = viewModel::selectCalendarDate,
+        onReturnToCalendar = viewModel::returnToCalendar,
+        onShowPreviousCalendarMonth = viewModel::showPreviousCalendarMonth,
+        onShowNextCalendarMonth = viewModel::showNextCalendarMonth,
         sharedElementModifier = sharedElementModifier,
     )
 }
@@ -91,7 +107,17 @@ fun ContestListScreen(
     onToggleRatedOnly: () -> Unit = {},
     onToggleFavoriteOnly: () -> Unit = {},
     onClearFilters: () -> Unit = {},
+    onToggleDisplayMode: () -> Unit = {},
+    onSelectCalendarDate: (LocalDate) -> Unit = {},
+    onReturnToCalendar: () -> Unit = {},
+    onShowPreviousCalendarMonth: () -> Unit = {},
+    onShowNextCalendarMonth: () -> Unit = {},
 ) {
+    BackHandler(
+        enabled = uiState.displayMode == ContestDisplayMode.CALENDAR &&
+            uiState.selectedCalendarDate != null,
+        onBack = onReturnToCalendar,
+    )
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -118,6 +144,11 @@ fun ContestListScreen(
                 onToggleRatedOnly = onToggleRatedOnly,
                 onToggleFavoriteOnly = onToggleFavoriteOnly,
                 onClearFilters = onClearFilters,
+                onToggleDisplayMode = onToggleDisplayMode,
+                onSelectCalendarDate = onSelectCalendarDate,
+                onReturnToCalendar = onReturnToCalendar,
+                onShowPreviousCalendarMonth = onShowPreviousCalendarMonth,
+                onShowNextCalendarMonth = onShowNextCalendarMonth,
                 sharedElementModifier = sharedElementModifier,
             )
         }
@@ -156,9 +187,26 @@ private fun ContestListContent(
     onToggleRatedOnly: () -> Unit,
     onToggleFavoriteOnly: () -> Unit,
     onClearFilters: () -> Unit,
+    onToggleDisplayMode: () -> Unit,
+    onSelectCalendarDate: (LocalDate) -> Unit,
+    onReturnToCalendar: () -> Unit,
+    onShowPreviousCalendarMonth: () -> Unit,
+    onShowNextCalendarMonth: () -> Unit,
     sharedElementModifier: @Composable (Contest) -> Modifier,
 ) {
     val pullState = rememberPullToRefreshState()
+    val zoneId = remember { ZoneId.systemDefault() }
+    val selectedDateLabel = uiState.selectedCalendarDate?.format(CALENDAR_DAY_TITLE_FORMATTER)
+    val headerTitle = if (selectedDateLabel == null) {
+        stringResource(R.string.contest_list_title)
+    } else {
+        stringResource(R.string.calendar_day_title, selectedDateLabel)
+    }
+    val selectedDateContests = uiState.selectedCalendarDate?.let { date ->
+        uiState.calendarContests.filter { contest ->
+            contest.startTime.atZone(zoneId).toLocalDate() == date
+        }
+    }.orEmpty()
 
     PullToRefreshBox(
         isRefreshing = uiState.isRefreshing,
@@ -180,93 +228,162 @@ private fun ContestListContent(
             item(key = "header") {
                 PageHeader(
                     eyebrow = stringResource(R.string.contest_list_eyebrow),
-                    title = stringResource(R.string.contest_list_title),
-                    subtitle = stringResource(R.string.contest_list_subtitle),
+                    title = headerTitle,
+                    subtitle = stringResource(
+                        if (uiState.selectedCalendarDate == null) {
+                            R.string.contest_list_subtitle
+                        } else {
+                            R.string.calendar_day_subtitle
+                        },
+                    ),
+                    trailingContent = {
+                        if (uiState.selectedCalendarDate != null) {
+                            CalendarBackAction(onClick = onReturnToCalendar)
+                        } else {
+                            CalendarModeToggle(
+                                displayMode = uiState.displayMode,
+                                onClick = onToggleDisplayMode,
+                            )
+                        }
+                    },
                 )
-                Spacer(modifier = Modifier.height(PulseTheme.spacing.lg))
-                SyncStatusControl(
-                    isRefreshing = uiState.isRefreshing,
-                    issueType = uiState.syncIssueType,
-                    failedSources = uiState.failedSources,
-                    hasSuccessfulSource = uiState.hasSuccessfulSource,
-                    hasCompletedSync = uiState.hasCompletedSync,
-                    lastUpdatedAt = uiState.lastUpdatedAt,
-                    onRefresh = onRefresh,
-                )
-                Spacer(modifier = Modifier.height(PulseTheme.spacing.lg))
-                ContestFilterPanel(
-                    uiState = uiState,
-                    onToggleExpanded = onToggleFilterExpanded,
-                    onToggleSource = onToggleSource,
-                    onSelectDateRange = onSelectDateRange,
-                    onToggleRatedOnly = onToggleRatedOnly,
-                    onToggleFavoriteOnly = onToggleFavoriteOnly,
-                    onClearFilters = onClearFilters,
-                )
+                if (uiState.selectedCalendarDate == null) {
+                    Spacer(modifier = Modifier.height(PulseTheme.spacing.lg))
+                    SyncStatusControl(
+                        isRefreshing = uiState.isRefreshing,
+                        issueType = uiState.syncIssueType,
+                        failedSources = uiState.failedSources,
+                        hasSuccessfulSource = uiState.hasSuccessfulSource,
+                        hasCompletedSync = uiState.hasCompletedSync,
+                        lastUpdatedAt = uiState.lastUpdatedAt,
+                        onRefresh = onRefresh,
+                    )
+                    Spacer(modifier = Modifier.height(PulseTheme.spacing.lg))
+                    ContestFilterPanel(
+                        uiState = uiState,
+                        onToggleExpanded = onToggleFilterExpanded,
+                        onToggleSource = onToggleSource,
+                        onSelectDateRange = onSelectDateRange,
+                        onToggleRatedOnly = onToggleRatedOnly,
+                        onToggleFavoriteOnly = onToggleFavoriteOnly,
+                        onClearFilters = onClearFilters,
+                    )
+                }
                 Spacer(modifier = Modifier.height(PulseTheme.spacing.xxl))
             }
 
-            item(key = "next-contest") {
-                FadeTransition(visible = uiState.nextContest != null) {
-                    uiState.nextContest?.let { nextContest ->
-                        NextContestCard(
-                            contest = nextContest,
+            when {
+                uiState.selectedCalendarDate != null -> {
+                    items(
+                        items = selectedDateContests,
+                        key = Contest::id,
+                    ) { contest ->
+                        ContestCard(
+                            contest = contest,
                             now = uiState.now,
-                            onClick = { onContestClick(nextContest.id) },
-                            modifier = sharedElementModifier(nextContest),
+                            onClick = { onContestClick(contest.id) },
+                            onToggleFavorite = { onToggleFavorite(contest.id) },
+                            modifier = sharedElementModifier(contest),
                         )
-                        Spacer(modifier = Modifier.height(PulseTheme.spacing.xxxl))
+                        Spacer(modifier = Modifier.height(PulseTheme.spacing.md))
+                    }
+                    item(key = "calendar-day-empty") {
+                        FadeTransition(visible = selectedDateContests.isEmpty()) {
+                            EmptyState(
+                                title = stringResource(R.string.calendar_empty_title),
+                                body = stringResource(R.string.calendar_empty_body),
+                            )
+                        }
                     }
                 }
-            }
-
-            uiState.groups.forEach { group ->
-                item(key = "group-${group.type.name}") {
-                    Text(
-                        text = group.type.label(),
-                        color = PulseTheme.colors.textPrimary,
-                        style = PulseTheme.typography.title3,
-                    )
-                    Spacer(modifier = Modifier.height(PulseTheme.spacing.md))
-                }
-                items(
-                    items = group.contests,
-                    key = Contest::id,
-                ) { contest ->
-                    ContestCard(
-                        contest = contest,
-                        now = uiState.now,
-                        onClick = { onContestClick(contest.id) },
-                        onToggleFavorite = { onToggleFavorite(contest.id) },
-                        modifier = sharedElementModifier(contest),
-                    )
-                    Spacer(modifier = Modifier.height(PulseTheme.spacing.md))
-                }
-                item(key = "group-space-${group.type.name}") {
-                    Spacer(modifier = Modifier.height(PulseTheme.spacing.lg))
-                }
-            }
-
-            item(key = "empty") {
-                FadeTransition(
-                    visible = uiState.groups.isEmpty() && uiState.nextContest == null,
-                ) {
-                    EmptyState(
-                        title = stringResource(
-                            if (uiState.activeFilterCount > 0) {
-                                R.string.filter_empty_title
-                            } else {
-                                R.string.contest_empty_title
+                uiState.displayMode == ContestDisplayMode.CALENDAR -> {
+                    item(key = "contest-calendar") {
+                        ContestCalendar(
+                            contests = uiState.calendarContests,
+                            month = uiState.calendarMonth,
+                            now = uiState.now,
+                            onPreviousMonth = onShowPreviousCalendarMonth,
+                            onNextMonth = onShowNextCalendarMonth,
+                            onDateClick = onSelectCalendarDate,
+                        )
+                    }
+                    item(key = "calendar-empty") {
+                        FadeTransition(
+                            visible = uiState.calendarContests.none { contest ->
+                                YearMonth.from(contest.startTime.atZone(zoneId)) == uiState.calendarMonth
                             },
-                        ),
-                        body = stringResource(
-                            when {
-                                uiState.activeFilterCount > 0 -> R.string.filter_empty_body
-                                uiState.syncIssueType != null -> R.string.contest_empty_offline_body
-                                else -> R.string.contest_empty_body
-                            },
-                        ),
-                    )
+                        ) {
+                            EmptyState(
+                                title = stringResource(R.string.calendar_empty_title),
+                                body = stringResource(R.string.calendar_empty_body),
+                            )
+                        }
+                    }
+                }
+                else -> {
+                    item(key = "next-contest") {
+                        FadeTransition(visible = uiState.nextContest != null) {
+                            uiState.nextContest?.let { nextContest ->
+                                NextContestCard(
+                                    contest = nextContest,
+                                    now = uiState.now,
+                                    onClick = { onContestClick(nextContest.id) },
+                                    modifier = sharedElementModifier(nextContest),
+                                )
+                                Spacer(modifier = Modifier.height(PulseTheme.spacing.xxxl))
+                            }
+                        }
+                    }
+
+                    uiState.groups.forEach { group ->
+                        item(key = "group-${group.type.name}") {
+                            Text(
+                                text = group.type.label(),
+                                color = PulseTheme.colors.textPrimary,
+                                style = PulseTheme.typography.title3,
+                            )
+                            Spacer(modifier = Modifier.height(PulseTheme.spacing.md))
+                        }
+                        items(
+                            items = group.contests,
+                            key = Contest::id,
+                        ) { contest ->
+                            ContestCard(
+                                contest = contest,
+                                now = uiState.now,
+                                onClick = { onContestClick(contest.id) },
+                                onToggleFavorite = { onToggleFavorite(contest.id) },
+                                modifier = sharedElementModifier(contest),
+                            )
+                            Spacer(modifier = Modifier.height(PulseTheme.spacing.md))
+                        }
+                        item(key = "group-space-${group.type.name}") {
+                            Spacer(modifier = Modifier.height(PulseTheme.spacing.lg))
+                        }
+                    }
+
+                    item(key = "empty") {
+                        FadeTransition(
+                            visible = uiState.groups.isEmpty() && uiState.nextContest == null,
+                        ) {
+                            EmptyState(
+                                title = stringResource(
+                                    if (uiState.activeFilterCount > 0) {
+                                        R.string.filter_empty_title
+                                    } else {
+                                        R.string.contest_empty_title
+                                    },
+                                ),
+                                body = stringResource(
+                                    when {
+                                        uiState.activeFilterCount > 0 -> R.string.filter_empty_body
+                                        uiState.syncIssueType != null -> R.string.contest_empty_offline_body
+                                        else -> R.string.contest_empty_body
+                                    },
+                                ),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -580,3 +697,4 @@ private val FILTERABLE_SOURCES = listOf(
 )
 private const val MIN_INDICATOR_DISTANCE_FRACTION = 0.01f
 private const val MAX_INDICATOR_DISTANCE_FRACTION = 1.5f
+private val CALENDAR_DAY_TITLE_FORMATTER = DateTimeFormatter.ofPattern("M月d日", Locale.CHINA)

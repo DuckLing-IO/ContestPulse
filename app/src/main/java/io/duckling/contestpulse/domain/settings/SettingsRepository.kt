@@ -12,6 +12,8 @@ interface SettingsRepository {
 
     suspend fun setIntervalHours(hours: Int)
 
+    suspend fun setDefaultReminderOffsetMinutes(minutes: Int)
+
     suspend fun setSourceEnabled(
         source: ContestSource,
         enabled: Boolean,

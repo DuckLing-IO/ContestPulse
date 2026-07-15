@@ -114,6 +114,12 @@ class SettingsViewModel @Inject constructor(
         settingsRepository.setIntervalHours(hours)
     }
 
+    fun setDefaultReminderOffsetMinutes(minutes: Int) {
+        viewModelScope.launch {
+            settingsRepository.setDefaultReminderOffsetMinutes(minutes)
+        }
+    }
+
     fun setSourceEnabled(
         source: ContestSource,
         enabled: Boolean,

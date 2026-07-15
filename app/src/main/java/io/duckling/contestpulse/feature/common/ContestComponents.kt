@@ -41,6 +41,7 @@ fun PageHeader(
     title: String,
     subtitle: String,
     modifier: Modifier = Modifier,
+    trailingContent: (@Composable () -> Unit)? = null,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
@@ -49,11 +50,19 @@ fun PageHeader(
             style = PulseTheme.typography.caption1,
         )
         Spacer(modifier = Modifier.height(PulseTheme.spacing.sm))
-        Text(
-            text = title,
-            color = PulseTheme.colors.textPrimary,
-            style = PulseTheme.typography.largeTitle,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(PulseTheme.spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                color = PulseTheme.colors.textPrimary,
+                style = PulseTheme.typography.largeTitle,
+                modifier = Modifier.weight(1f),
+            )
+            trailingContent?.invoke()
+        }
         Spacer(modifier = Modifier.height(PulseTheme.spacing.sm))
         Text(
             text = subtitle,

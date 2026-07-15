@@ -18,4 +18,9 @@ class SyncPreferencesTest {
             SyncPreferences().enabledSources,
         )
     }
+
+    @Test
+    fun newInstall_usesOneHourForAutomaticFavoriteReminders() {
+        assertEquals(60, SyncPreferences().defaultReminderOffsetMinutes)
+    }
 }

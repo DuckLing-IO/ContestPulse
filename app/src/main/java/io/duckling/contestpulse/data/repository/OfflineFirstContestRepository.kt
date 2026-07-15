@@ -85,7 +85,22 @@ class OfflineFirstContestRepository @Inject constructor(
                 false
             }
         }
-        if (removedFavorite) reminderManager.clearForContest(contestId)
+        if (removedFavorite) {
+            reminderManager.clearForContest(contestId)
+        } else {
+            try {
+                val defaultOffset = settingsRepository.preferences.first()
+                    .defaultReminderOffsetMinutes
+                reminderManager.scheduleDefaultReminder(
+                    contestId = contestId,
+                    offset = Duration.ofMinutes(defaultOffset.toLong()),
+                )
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                // Saving a favorite must not fail when its optional default reminder cannot be set.
+            }
+        }
     }
 
     override suspend fun refresh(): SyncReport {

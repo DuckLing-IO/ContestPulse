@@ -69,6 +69,7 @@ fun SettingsRoute(
         onBackgroundSyncChange = viewModel::setBackgroundSyncEnabled,
         onWifiOnlyChange = viewModel::setWifiOnly,
         onIntervalChange = viewModel::setIntervalHours,
+        onDefaultReminderOffsetChange = viewModel::setDefaultReminderOffsetMinutes,
         onSourceEnabledChange = viewModel::setSourceEnabled,
         onCheckForAppUpdate = viewModel::checkForAppUpdate,
         onDownloadAndInstallAppUpdate = {
@@ -102,6 +103,7 @@ fun SettingsScreen(
     onBackgroundSyncChange: (Boolean) -> Unit,
     onWifiOnlyChange: (Boolean) -> Unit,
     onIntervalChange: (Int) -> Unit,
+    onDefaultReminderOffsetChange: (Int) -> Unit,
     onSourceEnabledChange: (ContestSource, Boolean) -> Unit,
     onCheckForAppUpdate: () -> Unit,
     onDownloadAndInstallAppUpdate: () -> Unit,
@@ -229,6 +231,30 @@ fun SettingsScreen(
                         },
                     ),
                 )
+                Text(
+                    text = stringResource(R.string.settings_default_reminder_label),
+                    color = PulseTheme.colors.textPrimary,
+                    style = PulseTheme.typography.headline,
+                )
+                Text(
+                    text = stringResource(R.string.settings_default_reminder_body),
+                    color = PulseTheme.colors.textTertiary,
+                    style = PulseTheme.typography.footnote,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(PulseTheme.spacing.sm),
+                ) {
+                    DEFAULT_REMINDER_OFFSETS.forEach { minutes ->
+                        SelectableChip(
+                            label = defaultReminderOffsetLabel(minutes),
+                            selected = uiState.preferences.defaultReminderOffsetMinutes == minutes,
+                            onClick = { onDefaultReminderOffsetChange(minutes) },
+                        )
+                    }
+                }
                 SettingsSystemAction(onClick = onOpenReminderSettings)
             }
         }
@@ -287,7 +313,8 @@ private fun SettingsAppUpdate(
         )
         key(updateState.phase) {
             FadeTransition(visible = true) {
-                when (val phase = updateState.phase) {
+                Column(verticalArrangement = Arrangement.spacedBy(PulseTheme.spacing.md)) {
+                    when (val phase = updateState.phase) {
                     AppUpdatePhase.Idle -> SettingsUpdateAction(
                         label = stringResource(R.string.settings_update_check),
                         onClick = onCheckForUpdate,
@@ -352,6 +379,7 @@ private fun SettingsAppUpdate(
                             label = stringResource(R.string.settings_update_retry),
                             onClick = onCheckForUpdate,
                         )
+                    }
                     }
                 }
             }
@@ -621,7 +649,19 @@ private fun PrivacyStatement(text: String) {
     )
 }
 
+@Composable
+private fun defaultReminderOffsetLabel(minutes: Int): String = stringResource(
+    when (minutes) {
+        1_440 -> R.string.reminder_offset_day
+        180 -> R.string.reminder_offset_three_hours
+        60 -> R.string.reminder_offset_hour
+        15 -> R.string.reminder_offset_fifteen_minutes
+        else -> R.string.reminder_offset_start
+    },
+)
+
 private val SYNC_INTERVALS = listOf(6, 12, 24)
+private val DEFAULT_REMINDER_OFFSETS = listOf(1_440, 180, 60, 15, 0)
 private val CONFIGURABLE_SOURCES = listOf(
     ContestSource.CODEFORCES,
     ContestSource.ATCODER,

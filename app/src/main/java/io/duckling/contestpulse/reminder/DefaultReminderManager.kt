@@ -88,6 +88,45 @@ class DefaultReminderManager @Inject constructor(
         )
     }
 
+    override suspend fun scheduleDefaultReminder(
+        contestId: String,
+        offset: Duration,
+    ) {
+        require(!offset.isNegative) { "Reminder offset must not be negative" }
+        require(offset.seconds % SECONDS_PER_MINUTE == 0L) {
+            "Reminder offset must use whole minutes"
+        }
+        val offsetMinutes = offset.toMinutes()
+        if (reminderDao.getByContestAndOffset(contestId, offsetMinutes) != null) return
+
+        val contest = checkNotNull(contestDao.getById(contestId)) {
+            "Contest not found: $contestId"
+        }
+        val triggerAt = calculateReminderTrigger(
+            contestStart = Instant.ofEpochMilli(contest.startTimeEpochMillis),
+            offset = offset,
+            now = clock.instant(),
+        ) ?: return
+        val reminderId = "$contestId:$offsetMinutes"
+        val reminder = ReminderEntity(
+            id = reminderId,
+            contestId = contestId,
+            triggerAtEpochMillis = triggerAt.toEpochMilli(),
+            offsetMinutes = offsetMinutes,
+            isEnabled = true,
+            schedulerType = scheduler.schedulerType(),
+            systemRequestCode = stableReminderRequestCode(reminderId),
+            createdAtEpochMillis = clock.millis(),
+        )
+        reminderDao.upsert(reminder)
+        try {
+            scheduler.schedule(reminder)
+        } catch (throwable: Throwable) {
+            reminderDao.delete(reminder.id)
+            throw throwable
+        }
+    }
+
     override suspend fun clearForContest(contestId: String) {
         val reminders = reminderDao.getEnabledForContest(contestId)
         reminders.forEach(scheduler::cancel)
