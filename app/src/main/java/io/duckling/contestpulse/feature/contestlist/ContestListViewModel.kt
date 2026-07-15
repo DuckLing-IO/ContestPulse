@@ -252,6 +252,10 @@ class ContestListViewModel @Inject constructor(
     fun showNextCalendarMonth() {
         calendarMonth.update { it.plusMonths(1) }
     }
+
+    fun selectCalendarMonth(month: YearMonth) {
+        calendarMonth.value = month
+    }
 }
 
 private fun ContestFilter.activeFilterCount(): Int =

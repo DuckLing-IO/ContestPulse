@@ -33,6 +33,7 @@ import io.duckling.contestpulse.feature.common.LoadingCards
 import io.duckling.contestpulse.feature.common.PageHeader
 import io.duckling.contestpulse.feature.common.SelectableChip
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -54,6 +55,7 @@ fun FavoritesRoute(
         onReturnToCalendar = viewModel::returnToCalendar,
         onShowPreviousCalendarMonth = viewModel::showPreviousCalendarMonth,
         onShowNextCalendarMonth = viewModel::showNextCalendarMonth,
+        onSelectCalendarMonth = viewModel::selectCalendarMonth,
         sharedElementModifier = sharedElementModifier,
     )
 }
@@ -71,6 +73,7 @@ fun FavoritesScreen(
     onReturnToCalendar: () -> Unit = {},
     onShowPreviousCalendarMonth: () -> Unit = {},
     onShowNextCalendarMonth: () -> Unit = {},
+    onSelectCalendarMonth: (YearMonth) -> Unit = {},
 ) {
     BackHandler(
         enabled = uiState.displayMode == ContestDisplayMode.CALENDAR &&
@@ -183,6 +186,7 @@ fun FavoritesScreen(
                                 now = uiState.now,
                                 onPreviousMonth = onShowPreviousCalendarMonth,
                                 onNextMonth = onShowNextCalendarMonth,
+                                onMonthSelected = onSelectCalendarMonth,
                                 onDateClick = onSelectCalendarDate,
                             )
                         }

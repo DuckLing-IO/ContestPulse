@@ -10,7 +10,9 @@ import io.duckling.contestpulse.domain.update.AppUpdateRepository
 import io.duckling.contestpulse.domain.update.AppVersion
 import java.io.File
 import java.io.IOException
+import java.net.SocketTimeoutException
 import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +25,12 @@ class GitHubAppUpdateRepository @Inject constructor(
     private val gitHubReleaseApi: GitHubReleaseApi,
     private val okHttpClient: OkHttpClient,
 ) : AppUpdateRepository {
+    private val downloadClient = okHttpClient.newBuilder()
+        .connectTimeout(DOWNLOAD_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(DOWNLOAD_READ_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+        .callTimeout(DOWNLOAD_CALL_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+        .build()
+
     override suspend fun checkForUpdate(currentVersion: AppVersion): AppUpdateCheckResult =
         withContext(Dispatchers.IO) {
             try {
@@ -51,11 +59,15 @@ class GitHubAppUpdateRepository @Inject constructor(
     ): AppUpdateDownloadResult = withContext(Dispatchers.IO) {
         val updateDirectory = File(context.cacheDir, UPDATE_DIRECTORY_NAME)
         if (!updateDirectory.exists() && !updateDirectory.mkdirs()) {
-            return@withContext AppUpdateDownloadResult.Failure(AppUpdateError.DOWNLOAD)
+            return@withContext AppUpdateDownloadResult.Failure(
+                error = AppUpdateError.STORAGE,
+                detail = "无法创建更新缓存目录",
+            )
         }
 
-        val destination = File(updateDirectory, update.apkFileName)
-        val temporaryFile = File(updateDirectory, "${update.apkFileName}.part")
+        val safeFileName = File(update.apkFileName).name
+        val destination = File(updateDirectory, safeFileName)
+        val temporaryFile = File(updateDirectory, "$safeFileName.part")
         temporaryFile.delete()
 
         try {
@@ -65,15 +77,25 @@ class GitHubAppUpdateRepository @Inject constructor(
                     AppUpdateError.INTEGRITY,
                 )
             }
-            val request = Request.Builder().url(update.apkDownloadUrl).build()
-            okHttpClient.newCall(request).execute().use { response ->
+            val request = Request.Builder()
+                .url(update.apkDownloadUrl)
+                .header("Accept", APK_MIME_TYPE)
+                .build()
+            downloadClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    return@withContext AppUpdateDownloadResult.Failure(AppUpdateError.DOWNLOAD)
+                    return@withContext AppUpdateDownloadResult.Failure(
+                        error = AppUpdateError.DOWNLOAD,
+                        detail = "GitHub 下载响应 HTTP ${response.code}",
+                    )
                 }
                 val responseBody = response.body
-                    ?: return@withContext AppUpdateDownloadResult.Failure(AppUpdateError.DOWNLOAD)
+                    ?: return@withContext AppUpdateDownloadResult.Failure(
+                        error = AppUpdateError.DOWNLOAD,
+                        detail = "GitHub 未返回安装包内容",
+                    )
                 val totalBytes = responseBody.contentLength()
                 var downloadedBytes = 0L
+                onProgress(downloadedBytes, totalBytes)
                 responseBody.byteStream().use { input ->
                     temporaryFile.outputStream().buffered().use { output ->
                         val buffer = ByteArray(BUFFER_SIZE_BYTES)
@@ -86,8 +108,22 @@ class GitHubAppUpdateRepository @Inject constructor(
                         }
                     }
                 }
+                if (downloadedBytes <= 0L || (totalBytes > 0L && downloadedBytes != totalBytes)) {
+                    temporaryFile.delete()
+                    return@withContext AppUpdateDownloadResult.Failure(
+                        error = AppUpdateError.DOWNLOAD,
+                        detail = "安装包下载不完整：$downloadedBytes / $totalBytes 字节",
+                    )
+                }
             }
 
+            if (!temporaryFile.hasZipHeader()) {
+                temporaryFile.delete()
+                return@withContext AppUpdateDownloadResult.Failure(
+                    error = AppUpdateError.INTEGRITY,
+                    detail = "下载内容不是有效的 APK 文件",
+                )
+            }
             if (expectedChecksum != null && temporaryFile.sha256() != expectedChecksum) {
                 temporaryFile.delete()
                 return@withContext AppUpdateDownloadResult.Failure(AppUpdateError.INTEGRITY)
@@ -103,12 +139,24 @@ class GitHubAppUpdateRepository @Inject constructor(
         } catch (error: CancellationException) {
             temporaryFile.delete()
             throw error
-        } catch (_: IOException) {
+        } catch (error: SocketTimeoutException) {
             temporaryFile.delete()
-            AppUpdateDownloadResult.Failure(AppUpdateError.DOWNLOAD)
-        } catch (_: Exception) {
+            AppUpdateDownloadResult.Failure(
+                error = AppUpdateError.TIMEOUT,
+                detail = error.localizedMessage?.take(MAX_ERROR_DETAIL_LENGTH),
+            )
+        } catch (error: IOException) {
             temporaryFile.delete()
-            AppUpdateDownloadResult.Failure(AppUpdateError.UNKNOWN)
+            AppUpdateDownloadResult.Failure(
+                error = AppUpdateError.DOWNLOAD,
+                detail = error.localizedMessage?.take(MAX_ERROR_DETAIL_LENGTH),
+            )
+        } catch (error: Exception) {
+            temporaryFile.delete()
+            AppUpdateDownloadResult.Failure(
+                error = AppUpdateError.UNKNOWN,
+                detail = error.localizedMessage?.take(MAX_ERROR_DETAIL_LENGTH),
+            )
         }
     }
 
@@ -144,7 +192,7 @@ class GitHubAppUpdateRepository @Inject constructor(
         apkFileName: String,
     ): String? {
         val request = Request.Builder().url(url).build()
-        return okHttpClient.newCall(request).execute().use { response ->
+        return downloadClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return null
             val responseBody = response.body ?: return null
             if (responseBody.contentLength() > MAX_CHECKSUM_FILE_BYTES) return null
@@ -173,6 +221,12 @@ class GitHubAppUpdateRepository @Inject constructor(
             "%02x".format(byte.toInt() and 0xff)
         }
     }
+
+    private fun File.hasZipHeader(): Boolean = inputStream().use { input ->
+        val signature = ByteArray(ZIP_HEADER_SIZE)
+        input.read(signature) == ZIP_HEADER_SIZE &&
+            signature[0] == 'P'.code.toByte() && signature[1] == 'K'.code.toByte()
+    }
 }
 
 private const val GITHUB_OWNER = "DuckLing-IO"
@@ -186,4 +240,10 @@ private const val MAX_RELEASE_NOTES_LENGTH = 1_200
 private const val MAX_CHECKSUM_FILE_BYTES = 64 * 1024L
 private const val BUFFER_SIZE_BYTES = 8 * 1024
 private const val END_OF_STREAM = -1
+private const val ZIP_HEADER_SIZE = 2
+private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
+private const val DOWNLOAD_CONNECT_TIMEOUT_SECONDS = 30L
+private const val DOWNLOAD_READ_TIMEOUT_MINUTES = 5L
+private const val DOWNLOAD_CALL_TIMEOUT_MINUTES = 10L
+private const val MAX_ERROR_DETAIL_LENGTH = 240
 private val CHECKSUM_PATTERN = Regex("(?i)\\b[a-f0-9]{64}\\b")

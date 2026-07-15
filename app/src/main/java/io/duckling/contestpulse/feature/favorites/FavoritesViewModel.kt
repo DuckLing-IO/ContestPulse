@@ -135,6 +135,10 @@ class FavoritesViewModel @Inject constructor(
     fun showNextCalendarMonth() {
         calendarMonth.update { it.plusMonths(1) }
     }
+
+    fun selectCalendarMonth(month: YearMonth) {
+        calendarMonth.value = month
+    }
 }
 
 private const val STOP_TIMEOUT_MILLIS = 5_000L

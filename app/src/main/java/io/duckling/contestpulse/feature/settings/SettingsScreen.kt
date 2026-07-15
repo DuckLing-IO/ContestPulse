@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -59,8 +60,12 @@ fun SettingsRoute(
         .areNotificationsEnabled()
     LaunchedEffect(viewModel) {
         viewModel.installEvents.collect { apkFile ->
-            runCatching { context.installAppUpdate(apkFile) }
-                .onFailure { viewModel.reportInstallLaunchFailure() }
+            if (context.canInstallAppUpdates()) {
+                runCatching { context.installAppUpdate(apkFile) }
+                    .onFailure { viewModel.reportInstallLaunchFailure() }
+            } else {
+                context.openAppUpdateInstallSettings()
+            }
         }
     }
     SettingsScreen(
@@ -69,16 +74,11 @@ fun SettingsRoute(
         onBackgroundSyncChange = viewModel::setBackgroundSyncEnabled,
         onWifiOnlyChange = viewModel::setWifiOnly,
         onIntervalChange = viewModel::setIntervalHours,
-        onDefaultReminderOffsetChange = viewModel::setDefaultReminderOffsetMinutes,
+        onDefaultReminderOffsetsChange = viewModel::setDefaultReminderOffsetsMinutes,
         onSourceEnabledChange = viewModel::setSourceEnabled,
         onCheckForAppUpdate = viewModel::checkForAppUpdate,
-        onDownloadAndInstallAppUpdate = {
-            if (context.canInstallAppUpdates()) {
-                viewModel.downloadAppUpdate()
-            } else {
-                context.openAppUpdateInstallSettings()
-            }
-        },
+        onDownloadAndInstallAppUpdate = viewModel::downloadAppUpdate,
+        onRetryAppUpdate = viewModel::retryAppUpdate,
         onInstallDownloadedAppUpdate = {
             if (context.canInstallAppUpdates()) {
                 viewModel.installDownloadedAppUpdate()
@@ -103,11 +103,12 @@ fun SettingsScreen(
     onBackgroundSyncChange: (Boolean) -> Unit,
     onWifiOnlyChange: (Boolean) -> Unit,
     onIntervalChange: (Int) -> Unit,
-    onDefaultReminderOffsetChange: (Int) -> Unit,
+    onDefaultReminderOffsetsChange: (Set<Int>) -> Unit,
     onSourceEnabledChange: (ContestSource, Boolean) -> Unit,
     onCheckForAppUpdate: () -> Unit,
     onDownloadAndInstallAppUpdate: () -> Unit,
     onInstallDownloadedAppUpdate: () -> Unit,
+    onRetryAppUpdate: () -> Unit,
     onOpenCustomSources: () -> Unit,
     onOpenReminderSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -204,59 +205,13 @@ fun SettingsScreen(
         item(key = "settings-reminders") {
             SettingsSectionTitle(text = stringResource(R.string.settings_reminders_title))
             Spacer(modifier = Modifier.height(PulseTheme.spacing.md))
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .appCard()
-                    .padding(PulseTheme.spacing.xl),
-                verticalArrangement = Arrangement.spacedBy(PulseTheme.spacing.sm),
-            ) {
-                SettingsStatusRow(
-                    label = stringResource(R.string.settings_notification_label),
-                    status = stringResource(
-                        if (notificationsEnabled) {
-                            R.string.settings_status_available
-                        } else {
-                            R.string.settings_status_unavailable
-                        },
-                    ),
-                )
-                SettingsStatusRow(
-                    label = stringResource(R.string.settings_exact_alarm_label),
-                    status = stringResource(
-                        if (uiState.exactRemindersAvailable) {
-                            R.string.settings_status_exact
-                        } else {
-                            R.string.settings_status_inexact
-                        },
-                    ),
-                )
-                Text(
-                    text = stringResource(R.string.settings_default_reminder_label),
-                    color = PulseTheme.colors.textPrimary,
-                    style = PulseTheme.typography.headline,
-                )
-                Text(
-                    text = stringResource(R.string.settings_default_reminder_body),
-                    color = PulseTheme.colors.textTertiary,
-                    style = PulseTheme.typography.footnote,
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(PulseTheme.spacing.sm),
-                ) {
-                    DEFAULT_REMINDER_OFFSETS.forEach { minutes ->
-                        SelectableChip(
-                            label = defaultReminderOffsetLabel(minutes),
-                            selected = uiState.preferences.defaultReminderOffsetMinutes == minutes,
-                            onClick = { onDefaultReminderOffsetChange(minutes) },
-                        )
-                    }
-                }
-                SettingsSystemAction(onClick = onOpenReminderSettings)
-            }
+            DefaultReminderSettingsCard(
+                offsetsMinutes = uiState.preferences.defaultReminderOffsetsMinutes,
+                notificationsEnabled = notificationsEnabled,
+                exactRemindersAvailable = uiState.exactRemindersAvailable,
+                onOffsetsChange = onDefaultReminderOffsetsChange,
+                onOpenSystemSettings = onOpenReminderSettings,
+            )
         }
         item(key = "settings-app-update") {
             SettingsSectionTitle(text = stringResource(R.string.settings_update_title))
@@ -266,6 +221,7 @@ fun SettingsScreen(
                 onCheckForUpdate = onCheckForAppUpdate,
                 onDownloadAndInstall = onDownloadAndInstallAppUpdate,
                 onInstallDownloaded = onInstallDownloadedAppUpdate,
+                onRetry = onRetryAppUpdate,
             )
         }
         item(key = "settings-privacy") {
@@ -293,6 +249,7 @@ private fun SettingsAppUpdate(
     onCheckForUpdate: () -> Unit,
     onDownloadAndInstall: () -> Unit,
     onInstallDownloaded: () -> Unit,
+    onRetry: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -357,11 +314,7 @@ private fun SettingsAppUpdate(
                         )
                     }
 
-                    is AppUpdatePhase.Downloading -> SettingsUpdateStatus(
-                        text = phase.progressPercent?.let { progress ->
-                            stringResource(R.string.settings_update_downloading, progress)
-                        } ?: stringResource(R.string.settings_update_downloading_unknown),
-                    )
+                    is AppUpdatePhase.Downloading -> SettingsDownloadProgress(phase)
 
                     is AppUpdatePhase.ReadyToInstall -> {
                         SettingsUpdateStatus(
@@ -375,9 +328,16 @@ private fun SettingsAppUpdate(
 
                     is AppUpdatePhase.Error -> {
                         SettingsUpdateStatus(text = appUpdateErrorLabel(phase.error))
+                        phase.detail?.takeIf(String::isNotBlank)?.let { detail ->
+                            Text(
+                                text = detail,
+                                color = PulseTheme.colors.textTertiary,
+                                style = PulseTheme.typography.caption1,
+                            )
+                        }
                         SettingsUpdateAction(
                             label = stringResource(R.string.settings_update_retry),
-                            onClick = onCheckForUpdate,
+                            onClick = onRetry,
                         )
                     }
                     }
@@ -386,6 +346,67 @@ private fun SettingsAppUpdate(
         }
     }
 }
+
+@Composable
+private fun SettingsDownloadProgress(phase: AppUpdatePhase.Downloading) {
+    val targetProgress = phase.progressPercent?.div(100f) ?: 0f
+    val animatedProgress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy, // progress advances without overshoot
+            stiffness = Spring.StiffnessMedium, // follows network updates smoothly
+        ),
+        label = "updateDownloadProgress",
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(PulseTheme.spacing.sm)) {
+        SettingsUpdateStatus(
+            text = phase.progressPercent?.let { progress ->
+                stringResource(R.string.settings_update_downloading, progress)
+            } ?: stringResource(R.string.settings_update_downloading_unknown),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(PulseTheme.spacing.xs)
+                .background(
+                    color = PulseTheme.colors.separator,
+                    shape = RoundedCornerShape(PulseTheme.radius.full),
+                ),
+        ) {
+            if (phase.progressPercent != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(animatedProgress.coerceIn(0f, 1f))
+                        .height(PulseTheme.spacing.xs)
+                        .background(
+                            color = PulseTheme.colors.accent,
+                            shape = RoundedCornerShape(PulseTheme.radius.full),
+                        ),
+                )
+            }
+        }
+        if (phase.downloadedBytes > 0L) {
+            Text(
+                text = if (phase.totalBytes > 0L) {
+                    stringResource(
+                        R.string.settings_update_download_bytes,
+                        phase.downloadedBytes.toMegabytes(),
+                        phase.totalBytes.toMegabytes(),
+                    )
+                } else {
+                    stringResource(
+                        R.string.settings_update_downloaded_bytes,
+                        phase.downloadedBytes.toMegabytes(),
+                    )
+                },
+                color = PulseTheme.colors.textTertiary,
+                style = PulseTheme.typography.caption1,
+            )
+        }
+    }
+}
+
+private fun Long.toMegabytes(): String = String.format(java.util.Locale.CHINA, "%.1f", this / 1_048_576.0)
 
 @Composable
 private fun SettingsUpdateStatus(text: String) {
@@ -437,6 +458,14 @@ private fun appUpdateErrorLabel(error: io.duckling.contestpulse.domain.update.Ap
 
             io.duckling.contestpulse.domain.update.AppUpdateError.DOWNLOAD -> {
                 R.string.settings_update_error_download
+            }
+
+            io.duckling.contestpulse.domain.update.AppUpdateError.TIMEOUT -> {
+                R.string.settings_update_error_timeout
+            }
+
+            io.duckling.contestpulse.domain.update.AppUpdateError.STORAGE -> {
+                R.string.settings_update_error_storage
             }
 
             io.duckling.contestpulse.domain.update.AppUpdateError.INTEGRITY -> {
@@ -649,19 +678,7 @@ private fun PrivacyStatement(text: String) {
     )
 }
 
-@Composable
-private fun defaultReminderOffsetLabel(minutes: Int): String = stringResource(
-    when (minutes) {
-        1_440 -> R.string.reminder_offset_day
-        180 -> R.string.reminder_offset_three_hours
-        60 -> R.string.reminder_offset_hour
-        15 -> R.string.reminder_offset_fifteen_minutes
-        else -> R.string.reminder_offset_start
-    },
-)
-
 private val SYNC_INTERVALS = listOf(6, 12, 24)
-private val DEFAULT_REMINDER_OFFSETS = listOf(1_440, 180, 60, 15, 0)
 private val CONFIGURABLE_SOURCES = listOf(
     ContestSource.CODEFORCES,
     ContestSource.ATCODER,

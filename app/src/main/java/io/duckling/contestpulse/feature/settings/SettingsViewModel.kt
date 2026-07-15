@@ -53,6 +53,8 @@ sealed interface AppUpdatePhase {
     ) : AppUpdatePhase
 
     data class Downloading(
+        val downloadedBytes: Long,
+        val totalBytes: Long,
         val progressPercent: Int?,
     ) : AppUpdatePhase
 
@@ -62,6 +64,8 @@ sealed interface AppUpdatePhase {
 
     data class Error(
         val error: AppUpdateError,
+        val detail: String? = null,
+        val retryUpdate: AppUpdate? = null,
     ) : AppUpdatePhase
 }
 
@@ -114,9 +118,9 @@ class SettingsViewModel @Inject constructor(
         settingsRepository.setIntervalHours(hours)
     }
 
-    fun setDefaultReminderOffsetMinutes(minutes: Int) {
+    fun setDefaultReminderOffsetsMinutes(offsetsMinutes: Set<Int>) {
         viewModelScope.launch {
-            settingsRepository.setDefaultReminderOffsetMinutes(minutes)
+            settingsRepository.setDefaultReminderOffsetsMinutes(offsetsMinutes)
         }
     }
 
@@ -141,7 +145,7 @@ class SettingsViewModel @Inject constructor(
                 )
 
                 is AppUpdateCheckResult.Failure -> appUpdate.value.copy(
-                    phase = AppUpdatePhase.Error(result.error),
+                    phase = AppUpdatePhase.Error(result.error, detail = result.detail),
                 )
             }
         }
@@ -151,15 +155,25 @@ class SettingsViewModel @Inject constructor(
         val update = (appUpdate.value.phase as? AppUpdatePhase.Available)?.update ?: return
         viewModelScope.launch {
             appUpdate.value = appUpdate.value.copy(
-                phase = AppUpdatePhase.Downloading(progressPercent = null),
+                phase = AppUpdatePhase.Downloading(
+                    downloadedBytes = 0L,
+                    totalBytes = -1L,
+                    progressPercent = null,
+                ),
             )
             when (val result = appUpdateRepository.downloadUpdate(update) { downloaded, total ->
-                appUpdate.value = appUpdate.value.copy(
-                    phase = AppUpdatePhase.Downloading(
-                        progressPercent = total.takeIf { it > 0L }
-                            ?.let { size -> ((downloaded * 100L) / size).toInt().coerceIn(0, 100) },
-                    ),
-                )
+                val percent = total.takeIf { it > 0L }
+                    ?.let { size -> ((downloaded * 100L) / size).toInt().coerceIn(0, 100) }
+                val current = appUpdate.value.phase as? AppUpdatePhase.Downloading
+                if (current?.progressPercent != percent || current?.downloadedBytes != downloaded) {
+                    appUpdate.value = appUpdate.value.copy(
+                        phase = AppUpdatePhase.Downloading(
+                            downloadedBytes = downloaded,
+                            totalBytes = total,
+                            progressPercent = percent,
+                        ),
+                    )
+                }
             }) {
                 is io.duckling.contestpulse.domain.update.AppUpdateDownloadResult.Success -> {
                     appUpdate.value = appUpdate.value.copy(
@@ -170,7 +184,11 @@ class SettingsViewModel @Inject constructor(
 
                 is io.duckling.contestpulse.domain.update.AppUpdateDownloadResult.Failure -> {
                     appUpdate.value = appUpdate.value.copy(
-                        phase = AppUpdatePhase.Error(result.error),
+                        phase = AppUpdatePhase.Error(
+                            error = result.error,
+                            detail = result.detail,
+                            retryUpdate = update,
+                        ),
                     )
                 }
             }
@@ -184,6 +202,16 @@ class SettingsViewModel @Inject constructor(
     fun installDownloadedAppUpdate() {
         val apkFile = (appUpdate.value.phase as? AppUpdatePhase.ReadyToInstall)?.apkFile ?: return
         viewModelScope.launch { installEventChannel.send(apkFile) }
+    }
+
+    fun retryAppUpdate() {
+        val phase = appUpdate.value.phase as? AppUpdatePhase.Error ?: return
+        if (phase.retryUpdate != null) {
+            appUpdate.value = appUpdate.value.copy(phase = AppUpdatePhase.Available(phase.retryUpdate))
+            downloadAppUpdate()
+        } else {
+            checkForAppUpdate()
+        }
     }
 
     private fun updatePreferences(update: suspend () -> Unit) {

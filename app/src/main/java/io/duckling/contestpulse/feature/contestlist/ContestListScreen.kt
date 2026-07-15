@@ -89,6 +89,7 @@ fun ContestListRoute(
         onReturnToCalendar = viewModel::returnToCalendar,
         onShowPreviousCalendarMonth = viewModel::showPreviousCalendarMonth,
         onShowNextCalendarMonth = viewModel::showNextCalendarMonth,
+        onSelectCalendarMonth = viewModel::selectCalendarMonth,
         sharedElementModifier = sharedElementModifier,
     )
 }
@@ -112,6 +113,7 @@ fun ContestListScreen(
     onReturnToCalendar: () -> Unit = {},
     onShowPreviousCalendarMonth: () -> Unit = {},
     onShowNextCalendarMonth: () -> Unit = {},
+    onSelectCalendarMonth: (YearMonth) -> Unit = {},
 ) {
     BackHandler(
         enabled = uiState.displayMode == ContestDisplayMode.CALENDAR &&
@@ -149,6 +151,7 @@ fun ContestListScreen(
                 onReturnToCalendar = onReturnToCalendar,
                 onShowPreviousCalendarMonth = onShowPreviousCalendarMonth,
                 onShowNextCalendarMonth = onShowNextCalendarMonth,
+                onSelectCalendarMonth = onSelectCalendarMonth,
                 sharedElementModifier = sharedElementModifier,
             )
         }
@@ -192,6 +195,7 @@ private fun ContestListContent(
     onReturnToCalendar: () -> Unit,
     onShowPreviousCalendarMonth: () -> Unit,
     onShowNextCalendarMonth: () -> Unit,
+    onSelectCalendarMonth: (YearMonth) -> Unit,
     sharedElementModifier: @Composable (Contest) -> Modifier,
 ) {
     val pullState = rememberPullToRefreshState()
@@ -304,6 +308,7 @@ private fun ContestListContent(
                             now = uiState.now,
                             onPreviousMonth = onShowPreviousCalendarMonth,
                             onNextMonth = onShowNextCalendarMonth,
+                            onMonthSelected = onSelectCalendarMonth,
                             onDateClick = onSelectCalendarDate,
                         )
                     }

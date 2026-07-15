@@ -19,6 +19,8 @@ enum class AppUpdateError {
     NETWORK,
     RELEASE,
     DOWNLOAD,
+    TIMEOUT,
+    STORAGE,
     INTEGRITY,
     UNKNOWN,
 }
@@ -32,6 +34,7 @@ sealed interface AppUpdateCheckResult {
 
     data class Failure(
         val error: AppUpdateError,
+        val detail: String? = null,
     ) : AppUpdateCheckResult
 }
 
@@ -43,6 +46,7 @@ sealed interface AppUpdateDownloadResult {
 
     data class Failure(
         val error: AppUpdateError,
+        val detail: String? = null,
     ) : AppUpdateDownloadResult
 }
 
