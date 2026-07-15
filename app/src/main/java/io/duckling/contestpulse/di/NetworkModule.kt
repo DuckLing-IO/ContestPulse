@@ -5,6 +5,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import io.duckling.contestpulse.data.remote.codeforces.CodeforcesApi
+import io.duckling.contestpulse.data.update.GitHubReleaseApi
 import io.duckling.contestpulse.data.remote.atcoder.AtCoderContestPageApi
 import io.duckling.contestpulse.data.remote.luogu.LuoguContestPageApi
 import io.duckling.contestpulse.data.remote.nowcoder.NowcoderContestPageApi
@@ -83,6 +84,18 @@ object NetworkModule {
         .client(okHttpClient)
         .build()
         .create(NowcoderContestPageApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideGitHubReleaseApi(
+        json: Json,
+        okHttpClient: OkHttpClient,
+    ): GitHubReleaseApi = Retrofit.Builder()
+        .baseUrl("https://api.github.com/")
+        .client(okHttpClient)
+        .addConverterFactory(json.asConverterFactory(JSON_MEDIA_TYPE.toMediaType()))
+        .build()
+        .create(GitHubReleaseApi::class.java)
 }
 
 private const val JSON_MEDIA_TYPE = "application/json"

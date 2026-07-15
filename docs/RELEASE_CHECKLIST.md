@@ -29,3 +29,11 @@
 - [ ] 平台名称只用于来源识别，不使用暗示官方合作的文案或资产。
 - [ ] 使用真实设备采集首页、详情、筛选、提醒与设置的浅色/深色截图。
 - [ ] 使用正式签名生成 AAB；签名文件与口令不得进入仓库。
+
+## GitHub Release APK 更新
+
+- [ ] `app/build.gradle.kts` 中的 `versionName` 已改为本次发布版本，`versionCode` 比上一版严格递增。
+- [ ] 创建正式（非 Draft、非 Pre-release）GitHub Release，标签使用 `vX.Y.Z`，并与 `versionName` 一致，例如 `v1.1.0`。
+- [ ] 在 Release 中上传正式签名的 APK，文件名以 `.apk` 结尾，且不包含 `debug`；推荐命名为 `ContestPulse-vX.Y.Z.apk`。
+- [ ] 可选：上传同名校验文件 `ContestPulse-vX.Y.Z.apk.sha256`，内容为该 APK 的 SHA-256；客户端会在存在该文件时验证下载结果。
+- [ ] 在保留旧版数据的真实设备上，通过“设置 → 应用更新 → 检查更新”下载并走完系统安装确认；确认收藏、设置和提醒均仍存在。

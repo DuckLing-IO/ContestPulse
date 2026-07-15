@@ -5,6 +5,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,9 +16,13 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -28,14 +33,19 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.app.NotificationManagerCompat
 import io.duckling.contestpulse.R
 import io.duckling.contestpulse.core.designsystem.component.appCard
+import io.duckling.contestpulse.core.designsystem.component.FadeTransition
 import io.duckling.contestpulse.core.designsystem.component.pressEffect
 import io.duckling.contestpulse.core.designsystem.component.topLevelScreenPadding
 import io.duckling.contestpulse.core.designsystem.theme.PulseTheme
+import io.duckling.contestpulse.core.update.canInstallAppUpdates
+import io.duckling.contestpulse.core.update.installAppUpdate
+import io.duckling.contestpulse.core.update.openAppUpdateInstallSettings
 import io.duckling.contestpulse.domain.model.ContestSource
 import io.duckling.contestpulse.domain.model.SourceSyncStatus
 import io.duckling.contestpulse.feature.common.PageHeader
 import io.duckling.contestpulse.feature.common.SelectableChip
 import io.duckling.contestpulse.reminder.openReminderSystemSettings
+import kotlinx.coroutines.flow.collect
 
 @Composable
 fun SettingsRoute(
@@ -47,6 +57,12 @@ fun SettingsRoute(
     val notificationsEnabled = NotificationManagerCompat
         .from(context)
         .areNotificationsEnabled()
+    LaunchedEffect(viewModel) {
+        viewModel.installEvents.collect { apkFile ->
+            runCatching { context.installAppUpdate(apkFile) }
+                .onFailure { viewModel.reportInstallLaunchFailure() }
+        }
+    }
     SettingsScreen(
         uiState = uiState,
         notificationsEnabled = notificationsEnabled,
@@ -54,6 +70,21 @@ fun SettingsRoute(
         onWifiOnlyChange = viewModel::setWifiOnly,
         onIntervalChange = viewModel::setIntervalHours,
         onSourceEnabledChange = viewModel::setSourceEnabled,
+        onCheckForAppUpdate = viewModel::checkForAppUpdate,
+        onDownloadAndInstallAppUpdate = {
+            if (context.canInstallAppUpdates()) {
+                viewModel.downloadAppUpdate()
+            } else {
+                context.openAppUpdateInstallSettings()
+            }
+        },
+        onInstallDownloadedAppUpdate = {
+            if (context.canInstallAppUpdates()) {
+                viewModel.installDownloadedAppUpdate()
+            } else {
+                context.openAppUpdateInstallSettings()
+            }
+        },
         onOpenCustomSources = onOpenCustomSources,
         onOpenReminderSettings = {
             context.openReminderSystemSettings(
@@ -72,6 +103,9 @@ fun SettingsScreen(
     onWifiOnlyChange: (Boolean) -> Unit,
     onIntervalChange: (Int) -> Unit,
     onSourceEnabledChange: (ContestSource, Boolean) -> Unit,
+    onCheckForAppUpdate: () -> Unit,
+    onDownloadAndInstallAppUpdate: () -> Unit,
+    onInstallDownloadedAppUpdate: () -> Unit,
     onOpenCustomSources: () -> Unit,
     onOpenReminderSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -198,6 +232,16 @@ fun SettingsScreen(
                 SettingsSystemAction(onClick = onOpenReminderSettings)
             }
         }
+        item(key = "settings-app-update") {
+            SettingsSectionTitle(text = stringResource(R.string.settings_update_title))
+            Spacer(modifier = Modifier.height(PulseTheme.spacing.md))
+            SettingsAppUpdate(
+                updateState = uiState.appUpdate,
+                onCheckForUpdate = onCheckForAppUpdate,
+                onDownloadAndInstall = onDownloadAndInstallAppUpdate,
+                onInstallDownloaded = onInstallDownloadedAppUpdate,
+            )
+        }
         item(key = "settings-privacy") {
             SettingsSectionTitle(text = stringResource(R.string.settings_privacy_title))
             Spacer(modifier = Modifier.height(PulseTheme.spacing.md))
@@ -216,6 +260,166 @@ fun SettingsScreen(
         }
     }
 }
+
+@Composable
+private fun SettingsAppUpdate(
+    updateState: AppUpdateUiState,
+    onCheckForUpdate: () -> Unit,
+    onDownloadAndInstall: () -> Unit,
+    onInstallDownloaded: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .appCard()
+            .animateContentSize(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy, // smoothly accommodates release notes and status
+                    stiffness = Spring.StiffnessMedium, // keeps state changes responsive
+                ),
+            )
+            .padding(PulseTheme.spacing.xl),
+        verticalArrangement = Arrangement.spacedBy(PulseTheme.spacing.md),
+    ) {
+        SettingsStatusRow(
+            label = stringResource(R.string.settings_update_current_version),
+            status = stringResource(R.string.settings_update_version, updateState.currentVersion),
+        )
+        key(updateState.phase) {
+            FadeTransition(visible = true) {
+                when (val phase = updateState.phase) {
+                    AppUpdatePhase.Idle -> SettingsUpdateAction(
+                        label = stringResource(R.string.settings_update_check),
+                        onClick = onCheckForUpdate,
+                    )
+
+                    AppUpdatePhase.Checking -> SettingsUpdateStatus(
+                        text = stringResource(R.string.settings_update_checking),
+                    )
+
+                    AppUpdatePhase.UpToDate -> {
+                        SettingsUpdateStatus(text = stringResource(R.string.settings_update_latest))
+                        SettingsUpdateAction(
+                            label = stringResource(R.string.settings_update_check_again),
+                            onClick = onCheckForUpdate,
+                        )
+                    }
+
+                    is AppUpdatePhase.Available -> {
+                        SettingsUpdateStatus(
+                            text = stringResource(
+                                R.string.settings_update_available,
+                                phase.update.versionName,
+                            ),
+                        )
+                        if (phase.update.releaseNotes.isNotBlank()) {
+                            Text(
+                                text = stringResource(R.string.settings_update_release_notes),
+                                color = PulseTheme.colors.textPrimary,
+                                style = PulseTheme.typography.headline,
+                            )
+                            Text(
+                                text = phase.update.releaseNotes,
+                                color = PulseTheme.colors.textSecondary,
+                                style = PulseTheme.typography.footnote,
+                            )
+                        }
+                        SettingsUpdateAction(
+                            label = stringResource(R.string.settings_update_download_install),
+                            onClick = onDownloadAndInstall,
+                        )
+                    }
+
+                    is AppUpdatePhase.Downloading -> SettingsUpdateStatus(
+                        text = phase.progressPercent?.let { progress ->
+                            stringResource(R.string.settings_update_downloading, progress)
+                        } ?: stringResource(R.string.settings_update_downloading_unknown),
+                    )
+
+                    is AppUpdatePhase.ReadyToInstall -> {
+                        SettingsUpdateStatus(
+                            text = stringResource(R.string.settings_update_install_ready),
+                        )
+                        SettingsUpdateAction(
+                            label = stringResource(R.string.settings_update_install),
+                            onClick = onInstallDownloaded,
+                        )
+                    }
+
+                    is AppUpdatePhase.Error -> {
+                        SettingsUpdateStatus(text = appUpdateErrorLabel(phase.error))
+                        SettingsUpdateAction(
+                            label = stringResource(R.string.settings_update_retry),
+                            onClick = onCheckForUpdate,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsUpdateStatus(text: String) {
+    Text(
+        text = text,
+        color = PulseTheme.colors.textSecondary,
+        style = PulseTheme.typography.footnote,
+    )
+}
+
+@Composable
+private fun SettingsUpdateAction(
+    label: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = PulseTheme.colors.accent,
+                shape = RoundedCornerShape(PulseTheme.radius.md),
+            )
+            .pressEffect(
+                contentDescription = label,
+                onClick = onClick,
+            )
+            .padding(PulseTheme.spacing.md),
+    ) {
+        Text(
+            text = label,
+            color = PulseTheme.colors.onAccent,
+            style = PulseTheme.typography.footnote,
+        )
+    }
+}
+
+@Composable
+private fun appUpdateErrorLabel(error: io.duckling.contestpulse.domain.update.AppUpdateError): String =
+    stringResource(
+        when (error) {
+            io.duckling.contestpulse.domain.update.AppUpdateError.NETWORK -> {
+                R.string.settings_update_error_network
+            }
+
+            io.duckling.contestpulse.domain.update.AppUpdateError.RELEASE -> {
+                R.string.settings_update_error_release
+            }
+
+            io.duckling.contestpulse.domain.update.AppUpdateError.DOWNLOAD -> {
+                R.string.settings_update_error_download
+            }
+
+            io.duckling.contestpulse.domain.update.AppUpdateError.INTEGRITY -> {
+                R.string.settings_update_error_integrity
+            }
+
+            io.duckling.contestpulse.domain.update.AppUpdateError.UNKNOWN -> {
+                R.string.settings_update_error_unknown
+            }
+        },
+    )
 
 @Composable
 private fun SettingsCustomSourcesAction(
