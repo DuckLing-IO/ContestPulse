@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.duckling.contestpulse.core.time.MinuteTicker
+import io.duckling.contestpulse.core.time.TimeZoneProvider
 import io.duckling.contestpulse.domain.logic.buildContestTimeline
 import io.duckling.contestpulse.domain.logic.filterContests
 import io.duckling.contestpulse.domain.logic.statusAt
@@ -51,6 +52,7 @@ data class ContestListUiState(
     val calendarMonth: YearMonth = YearMonth.now(),
     val selectedCalendarDate: LocalDate? = null,
     val calendarContests: List<Contest> = emptyList(),
+    val zoneId: ZoneId = ZoneId.of("UTC"),
 )
 
 data class FailedSyncSource(
@@ -81,12 +83,12 @@ class ContestListViewModel @Inject constructor(
     private val contestRepository: ContestRepository,
     customSourceRepository: CustomSourceRepository,
     settingsRepository: SettingsRepository,
-    private val zoneId: ZoneId,
+    private val timeZoneProvider: TimeZoneProvider,
 ) : ViewModel() {
     private val filter = MutableStateFlow(ContestFilter())
     private val isFilterExpanded = MutableStateFlow(false)
     private val displayMode = MutableStateFlow(ContestDisplayMode.LIST)
-    private val calendarMonth = MutableStateFlow(YearMonth.now(zoneId))
+    private val calendarMonth = MutableStateFlow(YearMonth.now(timeZoneProvider.currentZoneId()))
     private val selectedCalendarDate = MutableStateFlow<LocalDate?>(null)
 
     private val filterUiState = combine(filter, isFilterExpanded) { currentFilter, expanded ->
@@ -126,6 +128,7 @@ class ContestListViewModel @Inject constructor(
         filterUiState,
         calendarUiState,
     ) { contests, now, syncState, currentFilterUi, currentCalendarUi ->
+        val zoneId = timeZoneProvider.currentZoneId()
         val filteredContests = filterContests(contests, currentFilterUi.filter, now)
         val timeline = buildContestTimeline(filteredContests, now, zoneId)
         val nextContest = timeline
@@ -172,6 +175,7 @@ class ContestListViewModel @Inject constructor(
             calendarContests = filteredContests
                 .filter { contest -> contest.statusAt(now) != io.duckling.contestpulse.domain.model.ContestStatus.FINISHED }
                 .sortedBy(Contest::startTime),
+            zoneId = zoneId,
         )
     }.stateIn(
         scope = viewModelScope,

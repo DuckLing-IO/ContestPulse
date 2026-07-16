@@ -42,6 +42,7 @@ import io.duckling.contestpulse.core.update.canInstallAppUpdates
 import io.duckling.contestpulse.core.update.installAppUpdate
 import io.duckling.contestpulse.core.update.openAppUpdateInstallSettings
 import io.duckling.contestpulse.domain.model.ContestSource
+import io.duckling.contestpulse.domain.model.ReminderDefinition
 import io.duckling.contestpulse.domain.model.SourceSyncStatus
 import io.duckling.contestpulse.feature.common.PageHeader
 import io.duckling.contestpulse.feature.common.SelectableChip
@@ -74,7 +75,7 @@ fun SettingsRoute(
         onBackgroundSyncChange = viewModel::setBackgroundSyncEnabled,
         onWifiOnlyChange = viewModel::setWifiOnly,
         onIntervalChange = viewModel::setIntervalHours,
-        onDefaultReminderOffsetsChange = viewModel::setDefaultReminderOffsetsMinutes,
+        onDefaultRemindersChange = viewModel::setDefaultReminders,
         onSourceEnabledChange = viewModel::setSourceEnabled,
         onCheckForAppUpdate = viewModel::checkForAppUpdate,
         onDownloadAndInstallAppUpdate = viewModel::downloadAppUpdate,
@@ -103,7 +104,7 @@ fun SettingsScreen(
     onBackgroundSyncChange: (Boolean) -> Unit,
     onWifiOnlyChange: (Boolean) -> Unit,
     onIntervalChange: (Int) -> Unit,
-    onDefaultReminderOffsetsChange: (Set<Int>) -> Unit,
+    onDefaultRemindersChange: (List<ReminderDefinition>) -> Unit,
     onSourceEnabledChange: (ContestSource, Boolean) -> Unit,
     onCheckForAppUpdate: () -> Unit,
     onDownloadAndInstallAppUpdate: () -> Unit,
@@ -206,10 +207,10 @@ fun SettingsScreen(
             SettingsSectionTitle(text = stringResource(R.string.settings_reminders_title))
             Spacer(modifier = Modifier.height(PulseTheme.spacing.md))
             DefaultReminderSettingsCard(
-                offsetsMinutes = uiState.preferences.defaultReminderOffsetsMinutes,
+                reminders = uiState.preferences.defaultReminders,
                 notificationsEnabled = notificationsEnabled,
                 exactRemindersAvailable = uiState.exactRemindersAvailable,
-                onOffsetsChange = onDefaultReminderOffsetsChange,
+                onRemindersChange = onDefaultRemindersChange,
                 onOpenSystemSettings = onOpenReminderSettings,
             )
         }

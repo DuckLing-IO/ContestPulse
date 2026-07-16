@@ -7,160 +7,139 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.style.TextAlign
-import io.duckling.contestpulse.R
 import io.duckling.contestpulse.core.designsystem.component.FadeTransition
 import io.duckling.contestpulse.core.designsystem.component.appCard
 import io.duckling.contestpulse.core.designsystem.component.pressEffect
 import io.duckling.contestpulse.core.designsystem.theme.PulseTheme
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlin.math.abs
+import io.duckling.contestpulse.domain.logic.validateReminderStructure
+import io.duckling.contestpulse.domain.model.ReminderDefinition
+import io.duckling.contestpulse.domain.model.ReminderScheduleStatus
+import io.duckling.contestpulse.feature.reminder.AddReminderDialog
+import io.duckling.contestpulse.feature.reminder.ReminderList
+import io.duckling.contestpulse.feature.reminder.ReminderListItemModel
+import java.time.Instant
+import java.time.ZoneId
+import java.util.UUID
 
 @Composable
 internal fun DefaultReminderSettingsCard(
-    offsetsMinutes: Set<Int>,
+    reminders: List<ReminderDefinition>,
     notificationsEnabled: Boolean,
     exactRemindersAvailable: Boolean,
-    onOffsetsChange: (Set<Int>) -> Unit,
+    onRemindersChange: (List<ReminderDefinition>) -> Unit,
     onOpenSystemSettings: () -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
-    var showPicker by rememberSaveable { mutableStateOf(false) }
+    var showEditor by rememberSaveable { mutableStateOf(false) }
+    var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+    val items = reminders.map { definition ->
+        ReminderListItemModel(
+            id = definition.id,
+            rule = definition.rule,
+            scheduleStatus = if (validateReminderStructure(definition.rule) == null) {
+                null
+            } else {
+                ReminderScheduleStatus.INVALID
+            },
+        )
+    }
+    val editing = items.firstOrNull { it.id == editingId }
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .appCard()
             .animateContentSize(
                 animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy, // expands the reminder list without overshoot
-                    stiffness = Spring.StiffnessMedium, // keeps disclosure responsive
+                    dampingRatio = Spring.DampingRatioNoBouncy, // settle without overshoot
+                    stiffness = Spring.StiffnessMedium, // responsive disclosure
                 ),
             )
             .padding(PulseTheme.spacing.xl),
         verticalArrangement = Arrangement.spacedBy(PulseTheme.spacing.md),
     ) {
-        ReminderCapabilityRow(
-            label = stringResource(R.string.settings_notification_label),
-            status = stringResource(
-                if (notificationsEnabled) R.string.settings_status_available
-                else R.string.settings_status_unavailable,
-            ),
-        )
-        ReminderCapabilityRow(
-            label = stringResource(R.string.settings_exact_alarm_label),
-            status = stringResource(
-                if (exactRemindersAvailable) R.string.settings_status_exact
-                else R.string.settings_status_inexact,
-            ),
-        )
-        val expandLabel = stringResource(R.string.settings_default_reminder_label)
+        ReminderCapabilityRow("通知权限", if (notificationsEnabled) "可用" else "未开放")
+        ReminderCapabilityRow("精确闹钟", if (exactRemindersAvailable) "精确" else "可能延迟")
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .pressEffect(
-                    contentDescription = stringResource(
-                        if (expanded) R.string.settings_reminder_collapse
-                        else R.string.settings_reminder_expand,
-                    ),
+                    if (expanded) "收起默认提醒" else "展开默认提醒",
                     onClick = { expanded = !expanded },
                 ),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(PulseTheme.spacing.xxs),
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(PulseTheme.spacing.xxs)) {
+                Text("默认提醒时间设置", color = PulseTheme.colors.textPrimary, style = PulseTheme.typography.headline)
                 Text(
-                    text = expandLabel,
-                    color = PulseTheme.colors.textPrimary,
-                    style = PulseTheme.typography.headline,
-                )
-                Text(
-                    text = if (offsetsMinutes.isEmpty()) {
-                        stringResource(R.string.settings_reminder_none)
-                    } else {
-                        stringResource(R.string.settings_reminder_count, offsetsMinutes.size)
-                    },
+                    if (reminders.isEmpty()) "未设置自动提醒" else "已设置 ${reminders.size} 个提醒",
                     color = PulseTheme.colors.textTertiary,
                     style = PulseTheme.typography.footnote,
                 )
             }
-            Text(
-                text = if (expanded) "⌃" else "⌄",
-                color = PulseTheme.colors.textSecondary,
-                style = PulseTheme.typography.title3,
-            )
+            Text(if (expanded) "收起" else "展开", color = PulseTheme.colors.textSecondary, style = PulseTheme.typography.footnote)
         }
         FadeTransition(visible = expanded) {
             Column(verticalArrangement = Arrangement.spacedBy(PulseTheme.spacing.sm)) {
                 Text(
-                    text = stringResource(R.string.settings_default_reminder_body),
+                    "收藏比赛时复制这些提醒；修改只影响之后收藏的比赛。",
                     color = PulseTheme.colors.textTertiary,
                     style = PulseTheme.typography.footnote,
                 )
-                if (offsetsMinutes.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.settings_reminder_empty),
-                        color = PulseTheme.colors.textSecondary,
-                        style = PulseTheme.typography.callout,
-                    )
+                if (items.isEmpty()) {
+                    Text("新收藏的比赛将不会自动创建提醒。", color = PulseTheme.colors.textSecondary, style = PulseTheme.typography.callout)
                 } else {
-                    offsetsMinutes.sortedDescending().forEach { minutes ->
-                        ReminderOffsetRow(
-                            minutes = minutes,
-                            onRemove = { onOffsetsChange(offsetsMinutes - minutes) },
-                        )
-                    }
+                    ReminderList(
+                        reminders = items,
+                        onEdit = {
+                            editingId = it.id
+                            showEditor = true
+                        },
+                        onDelete = { item ->
+                            onRemindersChange(reminders.filterNot { it.id == item.id })
+                        },
+                    )
                 }
-                ReminderPrimaryAction(
-                    label = stringResource(R.string.settings_reminder_add),
-                    onClick = { showPicker = true },
-                )
+                PrimaryAction("新增提醒") {
+                    editingId = null
+                    showEditor = true
+                }
             }
         }
-        ReminderSystemAction(onClick = onOpenSystemSettings)
+        SystemAction(onOpenSystemSettings)
     }
-    if (showPicker) {
-        ReminderOffsetPickerSheet(
-            existingOffsets = offsetsMinutes,
-            onDismiss = { showPicker = false },
-            onAdd = { minutes ->
-                onOffsetsChange(offsetsMinutes + minutes)
-                showPicker = false
-            },
-        )
-    }
+    AddReminderDialog(
+        visible = showEditor,
+        editing = editing,
+        existingRules = reminders.map(ReminderDefinition::rule),
+        contestStart = null,
+        now = Instant.now(),
+        zoneId = ZoneId.systemDefault(),
+        onDismiss = { showEditor = false },
+        onSave = { rule ->
+            val existing = reminders.firstOrNull { it.id == editingId }
+            val updated = if (existing == null) {
+                reminders + ReminderDefinition(UUID.randomUUID().toString(), rule, Instant.now())
+            } else {
+                reminders.map { if (it.id == existing.id) existing.copy(rule = rule) else it }
+            }
+            onRemindersChange(updated)
+            showEditor = false
+        },
+    )
 }
 
 @Composable
@@ -170,280 +149,36 @@ private fun ReminderCapabilityRow(label: String, status: String) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text = label, color = PulseTheme.colors.textPrimary, style = PulseTheme.typography.callout)
-        Text(text = status, color = PulseTheme.colors.textSecondary, style = PulseTheme.typography.footnote)
+        Text(label, color = PulseTheme.colors.textPrimary, style = PulseTheme.typography.callout)
+        Text(status, color = PulseTheme.colors.textSecondary, style = PulseTheme.typography.footnote)
     }
 }
 
 @Composable
-private fun ReminderOffsetRow(minutes: Int, onRemove: () -> Unit) {
-    val removeLabel = stringResource(R.string.settings_reminder_remove_description, reminderOffsetLabel(minutes))
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                color = PulseTheme.colors.surface,
-                shape = RoundedCornerShape(PulseTheme.radius.md),
-            )
-            .padding(start = PulseTheme.spacing.md),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(PulseTheme.spacing.xxs)) {
-            Text(
-                text = reminderOffsetLabel(minutes),
-                color = PulseTheme.colors.textPrimary,
-                style = PulseTheme.typography.callout,
-            )
-            Text(
-                text = stringResource(R.string.settings_reminder_before_start),
-                color = PulseTheme.colors.textTertiary,
-                style = PulseTheme.typography.caption1,
-            )
-        }
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(PulseTheme.spacing.giant)
-                .pressEffect(contentDescription = removeLabel, onClick = onRemove),
-        ) {
-            Text(
-                text = stringResource(R.string.settings_reminder_remove),
-                color = PulseTheme.colors.textSecondary,
-                style = PulseTheme.typography.footnote,
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ReminderOffsetPickerSheet(
-    existingOffsets: Set<Int>,
-    onDismiss: () -> Unit,
-    onAdd: (Int) -> Unit,
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var days by rememberSaveable { mutableIntStateOf(0) }
-    var hours by rememberSaveable { mutableIntStateOf(1) }
-    var minutes by rememberSaveable { mutableIntStateOf(0) }
-    val totalMinutes = days * MINUTES_PER_DAY + hours * MINUTES_PER_HOUR + minutes
-    val isDuplicate = totalMinutes in existingOffsets
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = PulseTheme.colors.surface,
-        contentColor = PulseTheme.colors.textPrimary,
-        shape = RoundedCornerShape(
-            topStart = PulseTheme.radius.xl,
-            topEnd = PulseTheme.radius.xl,
-        ),
-        tonalElevation = PulseTheme.elevation.none,
-        scrimColor = Color.Black.copy(alpha = 0.32f),
-        dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(top = PulseTheme.spacing.sm)
-                    .size(width = PulseTheme.spacing.xxxl, height = PulseTheme.spacing.xxs)
-                    .background(
-                        color = PulseTheme.colors.separator,
-                        shape = RoundedCornerShape(PulseTheme.radius.full),
-                    ),
-            )
-        },
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = PulseTheme.spacing.xl,
-                    end = PulseTheme.spacing.xl,
-                    bottom = PulseTheme.spacing.xxxl,
-                ),
-            verticalArrangement = Arrangement.spacedBy(PulseTheme.spacing.lg),
-        ) {
-            Text(
-                text = stringResource(R.string.settings_reminder_picker_title),
-                color = PulseTheme.colors.textPrimary,
-                style = PulseTheme.typography.title2,
-            )
-            Text(
-                text = stringResource(R.string.settings_reminder_picker_body),
-                color = PulseTheme.colors.textSecondary,
-                style = PulseTheme.typography.footnote,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(PulseTheme.spacing.sm),
-            ) {
-                ReminderWheel(
-                    values = 0..MAX_REMINDER_DAYS,
-                    initialValue = days,
-                    unit = stringResource(R.string.settings_reminder_unit_day),
-                    onValueChange = { days = it },
-                    modifier = Modifier.weight(1f),
-                )
-                ReminderWheel(
-                    values = 0..MAX_REMINDER_HOURS,
-                    initialValue = hours,
-                    unit = stringResource(R.string.settings_reminder_unit_hour),
-                    onValueChange = { hours = it },
-                    modifier = Modifier.weight(1f),
-                )
-                ReminderWheel(
-                    values = 0..MAX_REMINDER_MINUTES,
-                    initialValue = minutes,
-                    unit = stringResource(R.string.settings_reminder_unit_minute),
-                    onValueChange = { minutes = it },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Text(
-                text = if (isDuplicate) {
-                    stringResource(R.string.settings_reminder_duplicate)
-                } else {
-                    stringResource(R.string.settings_reminder_picker_result, reminderOffsetLabel(totalMinutes))
-                },
-                color = if (isDuplicate) PulseTheme.colors.textSecondary else PulseTheme.colors.textPrimary,
-                style = PulseTheme.typography.callout,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            ReminderPrimaryAction(
-                label = stringResource(R.string.settings_reminder_confirm),
-                enabled = !isDuplicate,
-                onClick = { onAdd(totalMinutes) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun ReminderWheel(
-    values: IntRange,
-    initialValue: Int,
-    unit: String,
-    onValueChange: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val initialIndex = (initialValue - values.first).coerceIn(0, values.count() - 1)
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
-    val flingBehavior = rememberSnapFlingBehavior(lazyListState = listState)
-    LaunchedEffect(listState, values) {
-        snapshotFlow {
-            val layoutInfo = listState.layoutInfo
-            val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
-            layoutInfo.visibleItemsInfo.minByOrNull { item ->
-                abs(item.offset + item.size / 2 - viewportCenter)
-            }?.index
-        }
-            .distinctUntilChanged()
-            .collect { index ->
-                if (index != null) onValueChange(values.first + index)
-            }
-    }
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = unit, color = PulseTheme.colors.textTertiary, style = PulseTheme.typography.caption1)
-        Spacer(modifier = Modifier.height(PulseTheme.spacing.xs))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(PulseTheme.spacing.huge * WHEEL_VISIBLE_ITEM_COUNT),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(PulseTheme.spacing.huge)
-                    .background(
-                        color = PulseTheme.colors.surfaceMuted,
-                        shape = RoundedCornerShape(PulseTheme.radius.md),
-                    ),
-            )
-            LazyColumn(
-                state = listState,
-                flingBehavior = flingBehavior,
-                contentPadding = PaddingValues(vertical = PulseTheme.spacing.huge * 2),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                items(values.toList(), key = { it }) { value ->
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(PulseTheme.spacing.huge),
-                    ) {
-                        Text(
-                            text = value.toString().padStart(2, '0'),
-                            color = PulseTheme.colors.textPrimary,
-                            style = PulseTheme.typography.title3,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ReminderPrimaryAction(
-    label: String,
-    enabled: Boolean = true,
-    onClick: () -> Unit,
-) {
+private fun PrimaryAction(label: String, onClick: () -> Unit) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                color = if (enabled) PulseTheme.colors.accent else PulseTheme.colors.separator,
-                shape = RoundedCornerShape(PulseTheme.radius.md),
-            )
-            .pressEffect(contentDescription = label, enabled = enabled, onClick = onClick)
+            .background(PulseTheme.colors.accent, RoundedCornerShape(PulseTheme.radius.md))
+            .pressEffect(label, onClick = onClick)
             .padding(PulseTheme.spacing.md),
     ) {
-        Text(
-            text = label,
-            color = if (enabled) PulseTheme.colors.onAccent else PulseTheme.colors.textTertiary,
-            style = PulseTheme.typography.footnote,
-        )
+        Text(label, color = PulseTheme.colors.onAccent, style = PulseTheme.typography.footnote)
     }
 }
 
 @Composable
-private fun ReminderSystemAction(onClick: () -> Unit) {
-    val label = stringResource(R.string.settings_open_system)
+private fun SystemAction(onClick: () -> Unit) {
+    val label = "打开系统提醒设置"
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                color = PulseTheme.colors.surface,
-                shape = RoundedCornerShape(PulseTheme.radius.md),
-            )
-            .pressEffect(contentDescription = label, role = Role.Button, onClick = onClick)
+            .background(PulseTheme.colors.surface, RoundedCornerShape(PulseTheme.radius.md))
+            .pressEffect(label, role = Role.Button, onClick = onClick)
             .padding(PulseTheme.spacing.md),
     ) {
-        Text(text = label, color = PulseTheme.colors.textPrimary, style = PulseTheme.typography.footnote)
+        Text(label, color = PulseTheme.colors.textPrimary, style = PulseTheme.typography.footnote)
     }
 }
-
-@Composable
-private fun reminderOffsetLabel(totalMinutes: Int): String {
-    if (totalMinutes == 0) return stringResource(R.string.reminder_offset_start)
-    val days = totalMinutes / MINUTES_PER_DAY
-    val hours = totalMinutes % MINUTES_PER_DAY / MINUTES_PER_HOUR
-    val minutes = totalMinutes % MINUTES_PER_HOUR
-    return buildList {
-        if (days > 0) add(stringResource(R.string.settings_reminder_days, days))
-        if (hours > 0) add(stringResource(R.string.settings_reminder_hours, hours))
-        if (minutes > 0) add(stringResource(R.string.settings_reminder_minutes, minutes))
-    }.joinToString(" ")
-}
-
-private const val MINUTES_PER_HOUR = 60
-private const val MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR
-private const val MAX_REMINDER_DAYS = 30
-private const val MAX_REMINDER_HOURS = 23
-private const val MAX_REMINDER_MINUTES = 59
-private const val WHEEL_VISIBLE_ITEM_COUNT = 5

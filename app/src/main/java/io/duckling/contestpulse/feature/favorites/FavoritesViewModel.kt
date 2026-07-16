@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.duckling.contestpulse.core.time.MinuteTicker
+import io.duckling.contestpulse.core.time.TimeZoneProvider
 import io.duckling.contestpulse.domain.logic.statusAt
 import io.duckling.contestpulse.domain.model.Contest
 import io.duckling.contestpulse.domain.model.ContestStatus
@@ -37,6 +38,7 @@ data class FavoritesUiState(
     val calendarMonth: YearMonth = YearMonth.now(),
     val selectedCalendarDate: LocalDate? = null,
     val calendarContests: List<Contest> = emptyList(),
+    val zoneId: ZoneId = ZoneId.of("UTC"),
 )
 
 private data class FavoriteCalendarUiState(
@@ -50,11 +52,11 @@ class FavoritesViewModel @Inject constructor(
     repository: ContestRepository,
     minuteTicker: MinuteTicker,
     private val contestRepository: ContestRepository,
-    zoneId: ZoneId,
+    private val timeZoneProvider: TimeZoneProvider,
 ) : ViewModel() {
     private val selectedSegment = MutableStateFlow(FavoriteSegment.UPCOMING)
     private val displayMode = MutableStateFlow(ContestDisplayMode.LIST)
-    private val calendarMonth = MutableStateFlow(YearMonth.now(zoneId))
+    private val calendarMonth = MutableStateFlow(YearMonth.now(timeZoneProvider.currentZoneId()))
     private val selectedCalendarDate = MutableStateFlow<LocalDate?>(null)
     private val calendarUiState = combine(
         displayMode,
@@ -74,6 +76,7 @@ class FavoritesViewModel @Inject constructor(
         selectedSegment,
         calendarUiState,
     ) { contests, now, segment, calendarState ->
+        val zoneId = timeZoneProvider.currentZoneId()
         val allFavorites = contests
             .filter(Contest::isFavorite)
             .sortedBy(Contest::startTime)
@@ -96,6 +99,7 @@ class FavoritesViewModel @Inject constructor(
             calendarMonth = calendarState.month,
             selectedCalendarDate = calendarState.selectedDate,
             calendarContests = allFavorites,
+            zoneId = zoneId,
         )
     }.stateIn(
         scope = viewModelScope,

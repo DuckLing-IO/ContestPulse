@@ -80,7 +80,7 @@ fun FavoritesScreen(
             uiState.selectedCalendarDate != null,
         onBack = onReturnToCalendar,
     )
-    val zoneId = remember { ZoneId.systemDefault() }
+    val zoneId = uiState.zoneId
     val selectedDateLabel = uiState.selectedCalendarDate?.format(CALENDAR_DAY_TITLE_FORMATTER)
     val headerTitle = if (selectedDateLabel == null) {
         stringResource(R.string.favorites_title)
@@ -163,6 +163,7 @@ fun FavoritesScreen(
                             ContestCard(
                                 contest = contest,
                                 now = uiState.now,
+                                zoneId = zoneId,
                                 onClick = { onContestClick(contest.id) },
                                 onToggleFavorite = { onToggleFavorite(contest.id) },
                                 modifier = sharedElementModifier(contest),
@@ -184,6 +185,7 @@ fun FavoritesScreen(
                                 contests = uiState.calendarContests,
                                 month = uiState.calendarMonth,
                                 now = uiState.now,
+                                zoneId = zoneId,
                                 onPreviousMonth = onShowPreviousCalendarMonth,
                                 onNextMonth = onShowNextCalendarMonth,
                                 onMonthSelected = onSelectCalendarMonth,
@@ -212,6 +214,7 @@ fun FavoritesScreen(
                             ContestCard(
                                 contest = contest,
                                 now = uiState.now,
+                                zoneId = zoneId,
                                 onClick = { onContestClick(contest.id) },
                                 onToggleFavorite = { onToggleFavorite(contest.id) },
                                 modifier = sharedElementModifier(contest),

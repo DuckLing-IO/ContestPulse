@@ -104,13 +104,13 @@ fun ContestCalendar(
     contests: List<Contest>,
     month: YearMonth,
     now: Instant,
+    zoneId: ZoneId,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
     onMonthSelected: (YearMonth) -> Unit,
     onDateClick: (LocalDate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val zoneId = remember { ZoneId.systemDefault() }
     val currentDate = now.atZone(zoneId).toLocalDate()
     val contestsByDate = remember(contests, zoneId) {
         contests.groupBy { contest -> contest.startTime.atZone(zoneId).toLocalDate() }

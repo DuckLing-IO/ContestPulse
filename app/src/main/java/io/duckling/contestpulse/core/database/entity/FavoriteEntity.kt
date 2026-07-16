@@ -1,6 +1,7 @@
 package io.duckling.contestpulse.core.database.entity
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -21,4 +22,6 @@ data class FavoriteEntity(
     @PrimaryKey val contestId: String,
     val createdAtEpochMillis: Long,
     val note: String?,
+    @ColumnInfo(defaultValue = "'CUSTOM'")
+    val reminderMode: String = "CUSTOM",
 )

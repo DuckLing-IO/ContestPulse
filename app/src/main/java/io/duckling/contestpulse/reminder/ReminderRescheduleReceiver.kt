@@ -5,26 +5,18 @@ import android.content.Context
 import android.content.Intent
 import dagger.hilt.android.AndroidEntryPoint
 import io.duckling.contestpulse.domain.reminder.ReminderManager
+import io.duckling.contestpulse.core.time.MinuteTicker
 import javax.inject.Inject
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class ReminderRescheduleReceiver : BroadcastReceiver() {
     @Inject lateinit var reminderManager: ReminderManager
+    @Inject lateinit var minuteTicker: MinuteTicker
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action !in RESCHEDULE_ACTIONS) return
-        val pendingResult = goAsync()
-        rescheduleScope.launch {
-            try {
-                reminderManager.rescheduleAll()
-            } finally {
-                pendingResult.finish()
-            }
-        }
+        minuteTicker.refresh()
+        reminderManager.requestReconcile()
     }
 }
 
@@ -33,5 +25,5 @@ private val RESCHEDULE_ACTIONS = setOf(
     Intent.ACTION_MY_PACKAGE_REPLACED,
     Intent.ACTION_TIME_CHANGED,
     Intent.ACTION_TIMEZONE_CHANGED,
+    Intent.ACTION_DATE_CHANGED,
 )
-private val rescheduleScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

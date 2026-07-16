@@ -6,11 +6,14 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.duckling.contestpulse.domain.model.ContestSource
+import io.duckling.contestpulse.domain.model.ReminderDefinition
 import io.duckling.contestpulse.domain.settings.DEFAULT_ENABLED_SOURCES
 import io.duckling.contestpulse.domain.settings.DEFAULT_REMINDER_OFFSETS_MINUTES
+import io.duckling.contestpulse.domain.settings.DEFAULT_REMINDERS
 import io.duckling.contestpulse.domain.settings.DEFAULT_SYNC_INTERVAL_HOURS
 import io.duckling.contestpulse.domain.settings.MAX_REMINDER_OFFSET_MINUTES
 import io.duckling.contestpulse.domain.settings.MIN_REMINDER_OFFSET_MINUTES
@@ -46,20 +49,23 @@ class DataStoreSettingsRepository @Inject constructor(
                 }
                 ?.toSet()
                 ?: DEFAULT_ENABLED_SOURCES
-            val defaultReminderOffsets = values[DEFAULT_REMINDER_OFFSETS]
-                ?.mapNotNull(String::toIntOrNull)
-                ?.filter { it in MIN_REMINDER_OFFSET_MINUTES..MAX_REMINDER_OFFSET_MINUTES }
-                ?.toSet()
-                ?: values[DEFAULT_REMINDER_OFFSET]
-                    ?.takeIf { it in MIN_REMINDER_OFFSET_MINUTES..MAX_REMINDER_OFFSET_MINUTES }
-                    ?.let(::setOf)
-                ?: DEFAULT_REMINDER_OFFSETS_MINUTES
+            val defaultReminders = values[DEFAULT_REMINDERS_V2]
+                ?.let(ReminderSettingsCodec::decode)
+                ?: ReminderSettingsCodec.fromLegacyOffsets(
+                    values[DEFAULT_REMINDER_OFFSETS]
+                        ?.mapNotNull(String::toIntOrNull)
+                        ?.filter { it in MIN_REMINDER_OFFSET_MINUTES..MAX_REMINDER_OFFSET_MINUTES }
+                        ?: values[DEFAULT_REMINDER_OFFSET]
+                            ?.takeIf { it in MIN_REMINDER_OFFSET_MINUTES..MAX_REMINDER_OFFSET_MINUTES }
+                            ?.let(::listOf)
+                        ?: DEFAULT_REMINDER_OFFSETS_MINUTES,
+                ).ifEmpty { DEFAULT_REMINDERS }
             SyncPreferences(
                 backgroundSyncEnabled = values[BACKGROUND_ENABLED] ?: true,
                 wifiOnly = values[WIFI_ONLY] ?: false,
                 intervalHours = interval,
                 enabledSources = enabledSources,
-                defaultReminderOffsetsMinutes = defaultReminderOffsets,
+                defaultReminders = defaultReminders,
             )
         }
 
@@ -80,9 +86,17 @@ class DataStoreSettingsRepository @Inject constructor(
         require(offsetsMinutes.all { it in MIN_REMINDER_OFFSET_MINUTES..MAX_REMINDER_OFFSET_MINUTES }) {
             "Unsupported default reminder offsets: $offsetsMinutes"
         }
+        setDefaultReminders(ReminderSettingsCodec.fromLegacyOffsets(offsetsMinutes))
+    }
+
+    override suspend fun setDefaultReminders(reminders: List<ReminderDefinition>) {
+        require(reminders.map(ReminderDefinition::id).distinct().size == reminders.size) {
+            "Default reminder ids must be unique"
+        }
         dataStore.edit { values ->
-            values[DEFAULT_REMINDER_OFFSETS] = offsetsMinutes.map(Int::toString).toSet()
+            values[DEFAULT_REMINDERS_V2] = ReminderSettingsCodec.encode(reminders)
             values.remove(DEFAULT_REMINDER_OFFSET)
+            values.remove(DEFAULT_REMINDER_OFFSETS)
         }
     }
 
@@ -104,4 +118,5 @@ private val WIFI_ONLY = booleanPreferencesKey("wifi_only")
 private val INTERVAL_HOURS = intPreferencesKey("sync_interval_hours")
 private val DEFAULT_REMINDER_OFFSET = intPreferencesKey("default_reminder_offset_minutes")
 private val DEFAULT_REMINDER_OFFSETS = stringSetPreferencesKey("default_reminder_offsets_minutes")
+private val DEFAULT_REMINDERS_V2 = stringPreferencesKey("default_reminders_v2_json")
 private val ENABLED_SOURCES = stringSetPreferencesKey("enabled_sources")

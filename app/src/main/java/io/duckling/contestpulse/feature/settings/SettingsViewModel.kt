@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.duckling.contestpulse.domain.model.ContestSource
+import io.duckling.contestpulse.domain.model.ReminderDefinition
 import io.duckling.contestpulse.domain.customsource.CustomSourceRepository
 import io.duckling.contestpulse.domain.model.ContestSyncState
 import io.duckling.contestpulse.domain.reminder.ReminderManager
@@ -121,6 +122,12 @@ class SettingsViewModel @Inject constructor(
     fun setDefaultReminderOffsetsMinutes(offsetsMinutes: Set<Int>) {
         viewModelScope.launch {
             settingsRepository.setDefaultReminderOffsetsMinutes(offsetsMinutes)
+        }
+    }
+
+    fun setDefaultReminders(reminders: List<ReminderDefinition>) {
+        viewModelScope.launch {
+            settingsRepository.setDefaultReminders(reminders)
         }
     }
 

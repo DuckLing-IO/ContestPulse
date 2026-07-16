@@ -21,6 +21,8 @@ data class Contest(
     val isFavorite: Boolean,
     val reminderOffsets: Set<Duration>,
     val lastUpdatedAt: Instant,
+    val reminders: List<ScheduledReminder> = emptyList(),
+    val reminderMode: ReminderMode? = null,
 ) {
     init {
         require(id.isNotBlank()) { "Contest id must not be blank" }

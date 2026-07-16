@@ -10,4 +10,6 @@ interface ReminderScheduler {
     fun schedule(reminder: ReminderEntity)
 
     fun cancel(reminder: ReminderEntity)
+
+    fun cancelLegacy(reminderId: String, requestCode: Int, pendingIntentVersion: Int)
 }

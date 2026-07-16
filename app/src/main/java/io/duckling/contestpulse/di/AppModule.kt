@@ -6,6 +6,8 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import java.time.Clock
 import java.time.ZoneId
+import io.duckling.contestpulse.core.time.SystemTimeZoneProvider
+import io.duckling.contestpulse.core.time.TimeZoneProvider
 import javax.inject.Singleton
 
 @Module
@@ -17,5 +19,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideZoneId(): ZoneId = ZoneId.systemDefault()
+    fun provideTimeZoneProvider(): TimeZoneProvider = SystemTimeZoneProvider()
+
+    @Provides
+    fun provideZoneId(provider: TimeZoneProvider): ZoneId = provider.currentZoneId()
 }

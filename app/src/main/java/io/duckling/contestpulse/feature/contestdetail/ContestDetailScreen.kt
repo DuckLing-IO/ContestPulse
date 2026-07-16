@@ -19,28 +19,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -52,13 +46,19 @@ import io.duckling.contestpulse.core.designsystem.component.pressEffect
 import io.duckling.contestpulse.core.designsystem.theme.PulseTheme
 import io.duckling.contestpulse.core.navigation.openWebUrl
 import io.duckling.contestpulse.domain.model.Contest
+import io.duckling.contestpulse.domain.model.ReminderDefinition
+import io.duckling.contestpulse.domain.model.ReminderMode
+import io.duckling.contestpulse.domain.model.ReminderRule
+import io.duckling.contestpulse.feature.reminder.AddReminderDialog
+import io.duckling.contestpulse.feature.reminder.ReminderList
+import io.duckling.contestpulse.feature.reminder.ReminderListItemModel
+import io.duckling.contestpulse.domain.logic.ReminderTriggerResult
+import io.duckling.contestpulse.domain.logic.calculateReminderTrigger
 import io.duckling.contestpulse.feature.common.EmptyState
 import io.duckling.contestpulse.feature.common.PlatformBadge
-import io.duckling.contestpulse.feature.common.SelectableChip
 import io.duckling.contestpulse.feature.common.countdownLabel
 import io.duckling.contestpulse.feature.common.durationLabel
 import io.duckling.contestpulse.feature.common.localDateTimeLabel
-import java.time.Duration
 
 @Composable
 fun ContestDetailRoute(
@@ -68,31 +68,25 @@ fun ContestDetailRoute(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var pendingReminderOffset by remember { mutableStateOf<Duration?>(null) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        val offset = pendingReminderOffset
-        pendingReminderOffset = null
-        if (granted && offset != null) {
-            viewModel.toggleReminder(offset)
-        } else if (!granted) {
+        if (!granted) {
             viewModel.notificationPermissionDenied()
         }
     }
-    val toggleReminder: (Duration) -> Unit = { offset ->
-        val isRemoving = offset in uiState.contest?.reminderOffsets.orEmpty()
-        val needsPermission = !isRemoving &&
+    val saveReminder: (String?, ReminderRule) -> Unit = { reminderId, rule ->
+        val needsPermission =
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.POST_NOTIFICATIONS,
             ) != PackageManager.PERMISSION_GRANTED
         if (needsPermission) {
-            pendingReminderOffset = offset
+            viewModel.saveReminder(reminderId, rule)
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            viewModel.toggleReminder(offset)
+            viewModel.saveReminder(reminderId, rule)
         }
     }
     ContestDetailScreen(
@@ -101,7 +95,8 @@ fun ContestDetailRoute(
         onToggleFavorite = viewModel::toggleFavorite,
         onOpenOfficialPage = { url -> context.openWebUrl(url) },
         onAddToCalendar = { contest -> context.addContestToSystemCalendar(contest) },
-        onToggleReminder = toggleReminder,
+        onSaveReminder = saveReminder,
+        onDeleteReminder = viewModel::deleteReminder,
         sharedElementModifier = sharedElementModifier,
     )
 }
@@ -113,7 +108,8 @@ fun ContestDetailScreen(
     onToggleFavorite: () -> Unit,
     onOpenOfficialPage: (String) -> Unit,
     onAddToCalendar: (Contest) -> Unit,
-    onToggleReminder: (Duration) -> Unit,
+    onSaveReminder: (String?, ReminderRule) -> Unit,
+    onDeleteReminder: (String) -> Unit,
     sharedElementModifier: @Composable (Contest) -> Modifier,
     modifier: Modifier = Modifier,
 ) {
@@ -147,7 +143,10 @@ fun ContestDetailScreen(
                     onToggleFavorite = onToggleFavorite,
                     onOpenOfficialPage = onOpenOfficialPage,
                     onAddToCalendar = onAddToCalendar,
-                    onToggleReminder = onToggleReminder,
+                    onSaveReminder = onSaveReminder,
+                    onDeleteReminder = onDeleteReminder,
+                    defaultReminders = uiState.defaultReminders,
+                    zoneId = uiState.zoneId,
                     canScheduleExactReminders = uiState.canScheduleExactReminders,
                     reminderMessage = uiState.reminderMessage,
                     modifier = sharedElementModifier(contest),
@@ -165,7 +164,10 @@ private fun DetailContent(
     onToggleFavorite: () -> Unit,
     onOpenOfficialPage: (String) -> Unit,
     onAddToCalendar: (Contest) -> Unit,
-    onToggleReminder: (Duration) -> Unit,
+    onSaveReminder: (String?, ReminderRule) -> Unit,
+    onDeleteReminder: (String) -> Unit,
+    defaultReminders: List<ReminderDefinition>,
+    zoneId: java.time.ZoneId,
     canScheduleExactReminders: Boolean,
     reminderMessage: ReminderUiMessage?,
     modifier: Modifier,
@@ -202,7 +204,7 @@ private fun DetailContent(
             )
             Spacer(modifier = Modifier.height(PulseTheme.spacing.xl))
             Text(
-                text = contest.countdownLabel(now),
+                text = contest.countdownLabel(now, zoneId),
                 color = PulseTheme.colors.textPrimary,
                 style = PulseTheme.typography.largeTitle,
             )
@@ -212,9 +214,13 @@ private fun DetailContent(
         Spacer(modifier = Modifier.height(PulseTheme.spacing.xxl))
         DetailReminderSection(
             contest = contest,
+            now = now,
             canScheduleExactReminders = canScheduleExactReminders,
             message = reminderMessage,
-            onToggleReminder = onToggleReminder,
+            defaultReminders = defaultReminders,
+            zoneId = zoneId,
+            onSaveReminder = onSaveReminder,
+            onDeleteReminder = onDeleteReminder,
         )
         Spacer(modifier = Modifier.height(PulseTheme.spacing.xxl))
         PrimaryOfficialAction(
@@ -265,12 +271,63 @@ private fun SecondaryAction(
 @Composable
 private fun DetailReminderSection(
     contest: Contest,
+    now: java.time.Instant,
     canScheduleExactReminders: Boolean,
     message: ReminderUiMessage?,
-    onToggleReminder: (Duration) -> Unit,
+    defaultReminders: List<ReminderDefinition>,
+    zoneId: java.time.ZoneId,
+    onSaveReminder: (String?, ReminderRule) -> Unit,
+    onDeleteReminder: (String) -> Unit,
 ) {
-    var customMinutes by rememberSaveable(contest.id) { mutableStateOf("") }
-    val parsedCustomMinutes = customMinutes.toLongOrNull()?.takeIf { it > 0 }
+    var showEditor by rememberSaveable(contest.id) { mutableStateOf(false) }
+    var editingId by rememberSaveable(contest.id) { mutableStateOf<String?>(null) }
+    val usesStoredRules = contest.isFavorite ||
+        contest.reminderMode == ReminderMode.CUSTOM ||
+        contest.reminders.isNotEmpty()
+    val applicableDefaults = defaultReminders.mapNotNull { definition ->
+        val trigger = calculateReminderTrigger(
+            contestStart = contest.startTime,
+            rule = definition.rule,
+            now = now,
+            zoneId = zoneId,
+        ) as? ReminderTriggerResult.Valid
+        trigger?.let { definition to it.triggerAt }
+    }.sortedWith(
+        compareBy<Pair<ReminderDefinition, java.time.Instant>>(
+            { it.second },
+            { it.first.createdAt },
+            { it.first.id },
+        ),
+    )
+    val skippedDefaultCount = defaultReminders.size - applicableDefaults.size
+    val reminderItems = if (usesStoredRules) {
+        contest.reminders
+            .sortedWith(
+                compareBy(
+                    { reminder -> reminder.triggerAt ?: java.time.Instant.MAX },
+                    { reminder -> reminder.definition.createdAt },
+                    { reminder -> reminder.id },
+                ),
+            )
+            .map { reminder ->
+                ReminderListItemModel(
+                    id = reminder.id,
+                    rule = reminder.rule,
+                    scheduleStatus = reminder.scheduleStatus,
+                    deliveryStatus = reminder.deliveryStatus,
+                )
+            }
+    } else {
+        applicableDefaults.map { (definition, _) ->
+            ReminderListItemModel(
+                id = definition.id,
+                rule = definition.rule,
+                isPreview = true,
+            )
+        }
+    }
+    val editing = reminderItems.firstOrNull { it.id == editingId }
+    val contestEnded = (contest.endTime ?: contest.startTime) <= now
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -295,103 +352,60 @@ private fun DetailReminderSection(
             style = PulseTheme.typography.callout,
         )
         Spacer(modifier = Modifier.height(PulseTheme.spacing.lg))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(PulseTheme.spacing.sm),
-        ) {
-            REMINDER_PRESETS.forEach { preset ->
-                SelectableChip(
-                    label = stringResource(preset.labelRes),
-                    selected = preset.offset in contest.reminderOffsets,
-                    onClick = { onToggleReminder(preset.offset) },
-                )
-            }
-            val presetOffsets = REMINDER_PRESETS.map(ReminderPreset::offset).toSet()
-            contest.reminderOffsets
-                .filterNot { offset -> offset in presetOffsets }
-                .sorted()
-                .forEach { offset ->
-                    SelectableChip(
-                        label = stringResource(
-                            R.string.reminder_offset_custom_value,
-                            offset.toMinutes(),
-                        ),
-                        selected = true,
-                        onClick = { onToggleReminder(offset) },
-                    )
-                }
+        if (reminderItems.isEmpty()) {
+            Text(
+                text = "尚未设置提醒",
+                color = PulseTheme.colors.textTertiary,
+                style = PulseTheme.typography.callout,
+            )
+        } else {
+            ReminderList(
+                reminders = reminderItems,
+                onEdit = { item ->
+                    editingId = item.id
+                    showEditor = true
+                },
+                onDelete = { item -> onDeleteReminder(item.id) },
+            )
+        }
+        if (!usesStoredRules && skippedDefaultCount > 0) {
+            Spacer(modifier = Modifier.height(PulseTheme.spacing.xs))
+            Text(
+                text = "${skippedDefaultCount} 条默认提醒不适用于本场比赛，已跳过",
+                color = PulseTheme.colors.textTertiary,
+                style = PulseTheme.typography.caption1,
+            )
         }
         Spacer(modifier = Modifier.height(PulseTheme.spacing.md))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(PulseTheme.spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BasicTextField(
-                value = customMinutes,
-                onValueChange = { value ->
-                    customMinutes = value.filter(Char::isDigit).take(MAX_CUSTOM_DIGITS)
-                },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                textStyle = PulseTheme.typography.body.copy(
-                    color = PulseTheme.colors.textPrimary,
-                ),
-                cursorBrush = SolidColor(PulseTheme.colors.textPrimary),
-                modifier = Modifier.weight(1f),
-                decorationBox = { innerTextField ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                color = PulseTheme.colors.background,
-                                shape = RoundedCornerShape(PulseTheme.radius.md),
-                            )
-                            .padding(PulseTheme.spacing.md),
-                    ) {
-                        if (customMinutes.isEmpty()) {
-                            Text(
-                                text = stringResource(R.string.reminder_custom_hint),
-                                color = PulseTheme.colors.textTertiary,
-                                style = PulseTheme.typography.body,
-                            )
-                        }
-                        innerTextField()
-                    }
-                },
+        if (contestEnded) {
+            Text(
+                text = "比赛已结束，无法新增提醒",
+                color = PulseTheme.colors.textTertiary,
+                style = PulseTheme.typography.footnote,
             )
+        } else {
+            val addLabel = "新增提醒"
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
+                    .fillMaxWidth()
                     .background(
-                        color = if (parsedCustomMinutes != null) {
-                            PulseTheme.colors.accent
-                        } else {
-                            PulseTheme.colors.separator
-                        },
+                        color = PulseTheme.colors.accent,
                         shape = RoundedCornerShape(PulseTheme.radius.md),
                     )
                     .pressEffect(
-                        contentDescription = stringResource(R.string.reminder_custom_add),
-                        enabled = parsedCustomMinutes != null,
+                        contentDescription = addLabel,
+                        role = Role.Button,
                         onClick = {
-                            parsedCustomMinutes?.let { minutes ->
-                                onToggleReminder(Duration.ofMinutes(minutes))
-                                customMinutes = ""
-                            }
+                            editingId = null
+                            showEditor = true
                         },
                     )
-                    .padding(horizontal = PulseTheme.spacing.md),
+                    .padding(PulseTheme.spacing.md),
             ) {
                 Text(
-                    text = stringResource(R.string.reminder_custom_add),
-                    color = if (parsedCustomMinutes != null) {
-                        PulseTheme.colors.onAccent
-                    } else {
-                        PulseTheme.colors.textTertiary
-                    },
+                    text = addLabel,
+                    color = PulseTheme.colors.onAccent,
                     style = PulseTheme.typography.footnote,
                 )
             }
@@ -405,6 +419,19 @@ private fun DetailReminderSection(
             )
         }
     }
+    AddReminderDialog(
+        visible = showEditor,
+        editing = editing,
+        existingRules = reminderItems.map(ReminderListItemModel::rule),
+        contestStart = contest.startTime,
+        now = now,
+        zoneId = zoneId,
+        onDismiss = { showEditor = false },
+        onSave = { rule ->
+            onSaveReminder(editing?.id, rule)
+            showEditor = false
+        },
+    )
 }
 
 @Composable
@@ -416,6 +443,8 @@ private fun ReminderUiMessage.label(): String = stringResource(
         ReminderUiMessage.TOO_LATE -> R.string.reminder_result_too_late
         ReminderUiMessage.NOTIFICATION_PERMISSION_DENIED ->
             R.string.reminder_result_permission_denied
+        ReminderUiMessage.DUPLICATE -> R.string.reminder_result_duplicate
+        ReminderUiMessage.INVALID -> R.string.reminder_result_invalid
         ReminderUiMessage.FAILED -> R.string.reminder_result_failed
     },
 )
@@ -602,18 +631,3 @@ private fun DetailNotFound(onBack: () -> Unit) {
 }
 
 private const val LOADING_HEIGHT_MULTIPLIER = 4
-
-private data class ReminderPreset(
-    val offset: Duration,
-    val labelRes: Int,
-)
-
-private val REMINDER_PRESETS = listOf(
-    ReminderPreset(Duration.ofDays(1), R.string.reminder_offset_day),
-    ReminderPreset(Duration.ofHours(3), R.string.reminder_offset_three_hours),
-    ReminderPreset(Duration.ofHours(1), R.string.reminder_offset_hour),
-    ReminderPreset(Duration.ofMinutes(15), R.string.reminder_offset_fifteen_minutes),
-    ReminderPreset(Duration.ZERO, R.string.reminder_offset_start),
-)
-
-private const val MAX_CUSTOM_DIGITS = 5

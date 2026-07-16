@@ -69,39 +69,14 @@ class OfflineFirstContestRepository @Inject constructor(
     }
 
     override suspend fun toggleFavorite(contestId: String): Result<Unit> = runCatching {
-        val removedFavorite = database.withTransaction {
-            check(contestDao.getById(contestId) != null) { "Contest not found: $contestId" }
-            if (favoriteDao.isFavorite(contestId)) {
-                favoriteDao.delete(contestId)
-                true
-            } else {
-                favoriteDao.insert(
-                    FavoriteEntity(
-                        contestId = contestId,
-                        createdAtEpochMillis = clock.millis(),
-                        note = null,
-                    ),
-                )
-                false
-            }
-        }
-        if (removedFavorite) {
-            reminderManager.clearForContest(contestId)
+        check(contestDao.getById(contestId) != null) { "Contest not found: $contestId" }
+        if (favoriteDao.isFavorite(contestId)) {
+            reminderManager.removeFavoriteAndReminders(contestId)
         } else {
-            settingsRepository.preferences.first()
-                .defaultReminderOffsetsMinutes
-                .forEach { defaultOffset ->
-                    try {
-                        reminderManager.scheduleDefaultReminder(
-                            contestId = contestId,
-                            offset = Duration.ofMinutes(defaultOffset.toLong()),
-                        )
-                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                        throw cancellation
-                    } catch (_: Exception) {
-                        // Saving a favorite must not fail when one optional reminder cannot be set.
-                    }
-                }
+            reminderManager.favoriteWithDefaultReminders(
+                contestId = contestId,
+                reminders = settingsRepository.preferences.first().defaultReminders,
+            )
         }
     }
 

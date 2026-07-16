@@ -6,9 +6,11 @@ import io.duckling.contestpulse.core.database.dao.ContestDao
 import io.duckling.contestpulse.core.database.dao.FavoriteDao
 import io.duckling.contestpulse.core.database.dao.SyncStatusDao
 import io.duckling.contestpulse.core.database.dao.ReminderDao
+import io.duckling.contestpulse.core.database.dao.PendingAlarmCleanupDao
 import io.duckling.contestpulse.core.database.entity.ContestEntity
 import io.duckling.contestpulse.core.database.entity.FavoriteEntity
 import io.duckling.contestpulse.core.database.entity.ReminderEntity
+import io.duckling.contestpulse.core.database.entity.PendingAlarmCleanupEntity
 import io.duckling.contestpulse.core.database.entity.SyncStatusEntity
 
 @Database(
@@ -16,14 +18,16 @@ import io.duckling.contestpulse.core.database.entity.SyncStatusEntity
         ContestEntity::class,
         FavoriteEntity::class,
         ReminderEntity::class,
+        PendingAlarmCleanupEntity::class,
         SyncStatusEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class ContestPulseDatabase : RoomDatabase() {
     abstract fun contestDao(): ContestDao
     abstract fun favoriteDao(): FavoriteDao
     abstract fun reminderDao(): ReminderDao
+    abstract fun pendingAlarmCleanupDao(): PendingAlarmCleanupDao
     abstract fun syncStatusDao(): SyncStatusDao
 }

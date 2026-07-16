@@ -2,6 +2,9 @@ package io.duckling.contestpulse.domain
 
 import io.duckling.contestpulse.domain.model.ContestSource
 import io.duckling.contestpulse.domain.settings.SyncPreferences
+import io.duckling.contestpulse.domain.model.ReminderDefinition
+import io.duckling.contestpulse.domain.model.ReminderRule
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -31,7 +34,7 @@ class SyncPreferencesTest {
 
         assertEquals(
             offsets,
-            SyncPreferences(defaultReminderOffsetsMinutes = offsets).defaultReminderOffsetsMinutes,
+            SyncPreferences(defaultReminders = offsets.map(::reminder)).defaultReminderOffsetsMinutes,
         )
     }
 
@@ -39,14 +42,20 @@ class SyncPreferencesTest {
     fun automaticFavoriteReminders_canBeDisabled() {
         assertEquals(
             emptySet<Int>(),
-            SyncPreferences(defaultReminderOffsetsMinutes = emptySet()).defaultReminderOffsetsMinutes,
+            SyncPreferences(defaultReminders = emptyList()).defaultReminderOffsetsMinutes,
         )
     }
 
     @Test
     fun automaticFavoriteReminders_rejectNegativeOffsets() {
         assertThrows(IllegalArgumentException::class.java) {
-            SyncPreferences(defaultReminderOffsetsMinutes = setOf(-1))
+            reminder(-1)
         }
     }
+
+    private fun reminder(offset: Int): ReminderDefinition = ReminderDefinition(
+        id = "relative-$offset",
+        rule = ReminderRule.Relative(offset),
+        createdAt = Instant.EPOCH,
+    )
 }

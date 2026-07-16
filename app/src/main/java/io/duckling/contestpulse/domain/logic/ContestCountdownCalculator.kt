@@ -5,15 +5,21 @@ import io.duckling.contestpulse.domain.model.ContestCountdown
 import io.duckling.contestpulse.domain.model.ContestStatus
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 
-fun Contest.countdownAt(now: Instant): ContestCountdown = when (statusAt(now)) {
+fun Contest.countdownAt(now: Instant, zoneId: ZoneId): ContestCountdown = when (statusAt(now)) {
     ContestStatus.RUNNING -> ContestCountdown.Running
     ContestStatus.FINISHED -> ContestCountdown.Finished
     ContestStatus.UNKNOWN -> ContestCountdown.Unknown
     ContestStatus.UPCOMING -> {
+        val calendarDays = ChronoUnit.DAYS.between(
+            now.atZone(zoneId).toLocalDate(),
+            startTime.atZone(zoneId).toLocalDate(),
+        )
         val remaining = Duration.between(now, startTime)
-        if (remaining >= Duration.ofDays(1)) {
-            ContestCountdown.Days(remaining.toDays())
+        if (calendarDays > 0) {
+            ContestCountdown.Days(calendarDays)
         } else {
             val totalMinutes = ((remaining.seconds.coerceAtLeast(0) + SECONDS_PER_MINUTE - 1) /
                 SECONDS_PER_MINUTE)

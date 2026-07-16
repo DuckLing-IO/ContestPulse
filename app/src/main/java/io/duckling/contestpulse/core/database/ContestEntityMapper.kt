@@ -5,6 +5,13 @@ import io.duckling.contestpulse.core.database.model.ContestWithFavorite
 import io.duckling.contestpulse.domain.model.Contest
 import io.duckling.contestpulse.domain.model.ContestSource
 import io.duckling.contestpulse.domain.model.ContestStatus
+import io.duckling.contestpulse.domain.model.ReminderDefinition
+import io.duckling.contestpulse.domain.model.ReminderDeliveryStatus
+import io.duckling.contestpulse.domain.model.ReminderFailureReason
+import io.duckling.contestpulse.domain.model.ReminderMode
+import io.duckling.contestpulse.domain.model.ReminderRule
+import io.duckling.contestpulse.domain.model.ReminderScheduleStatus
+import io.duckling.contestpulse.domain.model.ScheduledReminder
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
@@ -50,7 +57,40 @@ fun ContestWithFavorite.toDomain(): Contest = Contest(
         .map { reminder -> Duration.ofMinutes(reminder.offsetMinutes) }
         .toSet(),
     lastUpdatedAt = Instant.ofEpochMilli(contest.lastUpdatedAtEpochMillis),
+    reminders = reminders
+        .asSequence()
+        .filter { it.isEnabled }
+        .mapNotNull { it.toDomainReminder() }
+        .sortedWith(compareBy<ScheduledReminder> { it.triggerAt }.thenBy { it.id })
+        .toList(),
+    reminderMode = favorite?.reminderMode?.let { enumValueOrDefault(it, ReminderMode.CUSTOM) },
 )
+
+private fun io.duckling.contestpulse.core.database.entity.ReminderEntity.toDomainReminder(): ScheduledReminder? {
+    val rule = when (ruleType) {
+        io.duckling.contestpulse.core.database.entity.ReminderEntity.RULE_FIXED_TIME -> {
+            ReminderRule.FixedTime(
+                dayOffset = fixedDayOffset ?: return null,
+                hour = fixedHour ?: return null,
+                minute = fixedMinute ?: return null,
+            )
+        }
+        else -> ReminderRule.Relative(offsetMinutes.toInt())
+    }
+    return ScheduledReminder(
+        definition = ReminderDefinition(
+            id = id,
+            rule = rule,
+            createdAt = Instant.ofEpochMilli(createdAtEpochMillis),
+        ),
+        triggerAt = triggerAtEpochMillis?.let(Instant::ofEpochMilli),
+        scheduleStatus = enumValueOrDefault(scheduleStatus, ReminderScheduleStatus.UNSCHEDULED),
+        deliveryStatus = enumValueOrDefault(deliveryStatus, ReminderDeliveryStatus.NOT_ATTEMPTED),
+        failureReason = failureReason
+            ?.let { enumValueOrDefault(it, ReminderFailureReason.NONE) }
+            ?: ReminderFailureReason.NONE,
+    )
+}
 
 private fun Contest.remoteFingerprint(): String {
     val input = listOf(

@@ -141,6 +141,7 @@ fun FavoriteButton(
 fun ContestCard(
     contest: Contest,
     now: Instant,
+    zoneId: java.time.ZoneId,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
     modifier: Modifier = Modifier,
@@ -193,13 +194,13 @@ fun ContestCard(
                     color = PulseTheme.colors.textTertiary,
                     style = PulseTheme.typography.footnote,
                 )
-                FadeTransition(visible = contest.reminderOffsets.isNotEmpty()) {
+                FadeTransition(visible = contest.reminders.isNotEmpty()) {
                     Column {
                         Spacer(modifier = Modifier.height(PulseTheme.spacing.xxs))
                         Text(
                             text = stringResource(
                                 R.string.contest_reminder_count,
-                                contest.reminderOffsets.size,
+                                contest.reminders.size,
                             ),
                             color = PulseTheme.colors.textSecondary,
                             style = PulseTheme.typography.footnote,
@@ -208,7 +209,7 @@ fun ContestCard(
                 }
             }
             Text(
-                text = contest.countdownLabel(now),
+                text = contest.countdownLabel(now, zoneId),
                 color = PulseTheme.colors.textPrimary,
                 style = PulseTheme.typography.headline,
             )
@@ -220,6 +221,7 @@ fun ContestCard(
 fun NextContestCard(
     contest: Contest,
     now: Instant,
+    zoneId: java.time.ZoneId,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -256,7 +258,7 @@ fun NextContestCard(
         )
         Spacer(modifier = Modifier.height(PulseTheme.spacing.xl))
         Text(
-            text = contest.countdownLabel(now),
+            text = contest.countdownLabel(now, zoneId),
             color = PulseTheme.colors.textPrimary,
             style = PulseTheme.typography.title1,
         )

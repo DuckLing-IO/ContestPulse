@@ -48,7 +48,10 @@ fun ContestGroupType.label(): String = stringResource(
 )
 
 @Composable
-fun Contest.countdownLabel(now: Instant): String = when (val countdown = countdownAt(now)) {
+fun Contest.countdownLabel(
+    now: Instant,
+    zoneId: ZoneId,
+): String = when (val countdown = countdownAt(now, zoneId)) {
     ContestCountdown.Running -> stringResource(R.string.contest_countdown_running)
     ContestCountdown.Finished -> stringResource(R.string.contest_countdown_finished)
     ContestCountdown.Unknown -> stringResource(R.string.contest_countdown_unknown)

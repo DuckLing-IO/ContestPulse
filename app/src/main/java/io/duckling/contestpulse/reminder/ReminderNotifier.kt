@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -50,9 +51,10 @@ class ReminderNotifier @Inject constructor(
             return false
         }
 
+        val detailUri = ContestDetailDestination.deepLinkUri(contest.id)
         val contentIntent = Intent(
             Intent.ACTION_VIEW,
-            ContestDetailDestination.deepLinkUri(contest.id),
+            Uri.parse("$detailUri?reminderId=${Uri.encode(reminder.id)}"),
             context,
             MainActivity::class.java,
         )
@@ -67,7 +69,7 @@ class ReminderNotifier @Inject constructor(
             .setContentTitle(
                 context.getString(R.string.notification_title, contest.title),
             )
-            .setContentText(reminderBody(reminder.offsetMinutes))
+            .setContentText(reminderBody(reminder))
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
@@ -80,7 +82,18 @@ class ReminderNotifier @Inject constructor(
         return true
     }
 
-    private fun reminderBody(offsetMinutes: Long): String = when {
+    private fun reminderBody(reminder: ReminderEntity): String {
+        if (reminder.ruleType == ReminderEntity.RULE_FIXED_TIME) {
+            return io.duckling.contestpulse.domain.logic.formatReminder(
+                io.duckling.contestpulse.domain.model.ReminderRule.FixedTime(
+                    dayOffset = reminder.fixedDayOffset ?: 0,
+                    hour = reminder.fixedHour ?: 0,
+                    minute = reminder.fixedMinute ?: 0,
+                ),
+            )
+        }
+        val offsetMinutes = reminder.offsetMinutes
+        return when {
         offsetMinutes == 0L -> context.getString(R.string.notification_body_now)
         offsetMinutes % MINUTES_PER_DAY == 0L -> context.getString(
             R.string.notification_body_days,
@@ -91,6 +104,7 @@ class ReminderNotifier @Inject constructor(
             offsetMinutes / MINUTES_PER_HOUR,
         )
         else -> context.getString(R.string.notification_body_minutes, offsetMinutes)
+        }
     }
 
     companion object {

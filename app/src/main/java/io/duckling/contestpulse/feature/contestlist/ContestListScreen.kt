@@ -199,7 +199,7 @@ private fun ContestListContent(
     sharedElementModifier: @Composable (Contest) -> Modifier,
 ) {
     val pullState = rememberPullToRefreshState()
-    val zoneId = remember { ZoneId.systemDefault() }
+    val zoneId = uiState.zoneId
     val selectedDateLabel = uiState.selectedCalendarDate?.format(CALENDAR_DAY_TITLE_FORMATTER)
     val headerTitle = if (selectedDateLabel == null) {
         stringResource(R.string.contest_list_title)
@@ -285,6 +285,7 @@ private fun ContestListContent(
                         ContestCard(
                             contest = contest,
                             now = uiState.now,
+                            zoneId = zoneId,
                             onClick = { onContestClick(contest.id) },
                             onToggleFavorite = { onToggleFavorite(contest.id) },
                             modifier = sharedElementModifier(contest),
@@ -306,6 +307,7 @@ private fun ContestListContent(
                             contests = uiState.calendarContests,
                             month = uiState.calendarMonth,
                             now = uiState.now,
+                            zoneId = zoneId,
                             onPreviousMonth = onShowPreviousCalendarMonth,
                             onNextMonth = onShowNextCalendarMonth,
                             onMonthSelected = onSelectCalendarMonth,
@@ -332,6 +334,7 @@ private fun ContestListContent(
                                 NextContestCard(
                                     contest = nextContest,
                                     now = uiState.now,
+                                    zoneId = zoneId,
                                     onClick = { onContestClick(nextContest.id) },
                                     modifier = sharedElementModifier(nextContest),
                                 )
@@ -356,6 +359,7 @@ private fun ContestListContent(
                             ContestCard(
                                 contest = contest,
                                 now = uiState.now,
+                                zoneId = zoneId,
                                 onClick = { onContestClick(contest.id) },
                                 onToggleFavorite = { onToggleFavorite(contest.id) },
                                 modifier = sharedElementModifier(contest),
